@@ -92,7 +92,7 @@ flowchart LR
   end
 
   subgraph NET["Midnight network (public)"]
-    Node["Node"]
+    MN["Node"]
     Idx["Indexer"]
     BC["Bounty contracts"]
     TK["Test token contract"]
@@ -100,15 +100,15 @@ flowchart LR
 
   Poster --> PUI
   Solver --> SUI
-  PUI <--> PW
+  PUI --> PW
   PUI --> PPS
-  SUI <--> SW
+  SUI --> SW
   SUI --> SPS
-  PW --> Node
-  SW --> Node
-  Node --- BC
-  Node --- TK
-  Node --> Idx
+  PW --> MN
+  SW --> MN
+  MN --> BC
+  MN --> TK
+  MN --> Idx
   Idx --> PUI
   Idx --> SUI
   Idx --> Observer
@@ -145,7 +145,7 @@ flowchart TB
   PS["Proof server 8.1.x<br/>local"]
 
   subgraph Net["Midnight network"]
-    Node["Node 1.0.400"]
+    MN["Node 1.0.400"]
     Idx["Indexer 4.3.x<br/>GraphQL queries and subscriptions"]
     BC["Bounty contracts<br/>one per checker template"]
     TK["Test token contract"]
@@ -159,11 +159,11 @@ flowchart TB
   PP --> PS
   API -->|"balanceUnsealedTransaction, submitTransaction"| Lace
   Lace -->|"getConfiguration: proof server, indexer URIs"| API
-  Lace --> Node
+  Lace --> MN
   PDP --> Idx
-  Node --> Idx
-  Node --- BC
-  Node --- TK
+  MN --> Idx
+  MN --> BC
+  MN --> TK
 ```
 
 This follows the same wiring as the zk-loan example UI: `FetchZkConfigProvider`,
