@@ -1,0 +1,30 @@
+# Internal notes for Claude Code sessions: never commit
+CLAUDE.md
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and builds
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Compact compiler output
+managed/
+
+# Local network and test artifacts
+*.log
+.vite/
+playwright-report/
+test-results/
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
