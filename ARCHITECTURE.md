@@ -55,11 +55,11 @@ Diffie-Hellman key exchange on the Jubjub curve, and the proof shows it was done
 | **Poster** (buyer) | Posts a bounty: checker template, parameters, reward and deadline. Reads the answer. |
 | **Solver** (seller) | Finds an answer, proves it passes and gets paid. |
 | **Observer** | Anyone reading the chain or the indexer. Sees the bounty, never the answer. |
-| **Lace wallet** | Balances, signs and submits transactions via the DApp Connector, and pays DUST fees. |
+| **Wallet** | Lace, 1AM or any wallet that implements the DApp Connector. Balances, signs and submits transactions, and pays DUST fees. |
 | **Proof server** | Runs locally and generates the ZK proofs, so private inputs never leave the machine. |
 | **Midnight node and indexer** | Run the network and serve live contract state to the UI. |
 
-![System context: poster and solver machines, each with the app, Lace and a local proof server, talking to the Midnight network](docs/images/system-context.svg)
+![System context: poster and solver machines, each with the app, a wallet and a local proof server, talking to the Midnight network](docs/images/system-context.svg)
 
 ## 5. Two modes
 
@@ -77,7 +77,7 @@ k and a hidden price (section 14).
 
 ## 6. Component architecture
 
-![Component architecture: React app, BountyAPI and midnight-js providers, Lace, proof server, node, indexer and contracts](docs/images/components.svg)
+![Component architecture: React app, BountyAPI and midnight-js providers, the wallet, proof server, node, indexer and contracts](docs/images/components.svg)
 
 This follows the same wiring as the zk-loan example UI: `FetchZkConfigProvider`,
 `httpClientProofProvider` and `indexerPublicDataProvider`, with the wallet's `getConfiguration()`
@@ -233,7 +233,7 @@ state. 🔬 Q2
 ```mermaid
 flowchart TD
   A(["Open the app"]) --> B{"Wallet connected?"}
-  B -->|no| B1["Connect Lace"] --> C
+  B -->|no| B1["Connect a wallet"] --> C
   B -->|yes| C["Bounty board"]
   C --> D["Post a bounty"]
   D --> D1["Pick a checker template"]
@@ -287,7 +287,7 @@ sequenceDiagram
   participant UI as Bounty app
   participant St as Private state store
   participant PS as Proof server
-  participant W as Lace wallet
+  participant W as Wallet
   participant N as Node
   participant I as Indexer
   P->>UI: Template, parameters, reward, deadline
@@ -310,7 +310,7 @@ sequenceDiagram
   actor S as Solver
   participant UI as Bounty app
   participant PS as Proof server
-  participant W as Lace wallet
+  participant W as Wallet
   participant C as Bounty contract
   participant I as Indexer
   S->>UI: Pick a bounty, enter an answer
@@ -361,7 +361,7 @@ sequenceDiagram
   actor P as Poster
   participant UI as Bounty app
   participant PS as Proof server
-  participant W as Lace wallet
+  participant W as Wallet
   participant C as Bounty contract
   P->>UI: Refund
   UI->>UI: Run refund: poster pseudonym, blockTimeGte(deadline), status OPEN
@@ -442,7 +442,7 @@ flowchart LR
     Z["Zswap: nullifiers and<br/>coin commitments only"]
     T["Block time check"]
   end
-  subgraph Wallet["Lace"]
+  subgraph Wallet["Wallet"]
     B["Balance with DUST fee"]
   end
   W1 --> JS --> PS --> B --> V
@@ -516,7 +516,7 @@ flowchart LR
 | Q3 | Can a coin received in the same transaction be the **first** merge input? | Try it. If yes, drop the separate stake transaction |
 | Q4 | Do pure circuits in the browser reproduce the circuit's `ecMul` and `transientHash`? | Round trip: encrypt in `submit`, decrypt with the pure circuits |
 | Q5 | Does a failing `submit` leave no partial state? | Force failures (expired, already solved, bad stake) and check the ledger |
-| Q6 | Can Lace balance a transaction that pays in and receives a payout? | Run `stake` and `submit` through the DApp Connector |
+| Q6 | Can the wallet (Lace, 1AM) balance a transaction that pays in and receives a payout? | Run `stake` and `submit` through the DApp Connector |
 | Q7 | Block time units and drift | Read the kernel's time in a test circuit and compare it with wall-clock time |
 | Q8 | Persistent, encrypted browser private state | Prototype a store that survives a reload |
 | Q9 | `JubjubPoint` and vectors inside ledger map values | Compile and run the ledger state from section 7 |
