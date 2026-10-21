@@ -29,21 +29,7 @@ building blocks get split into standalone examples.
 
 ## 2. The problem we fix
 
-```mermaid
-flowchart LR
-  subgraph Classic["Classic ZKCP (Bitcoin, Ethereum)"]
-    direction TB
-    a1["Seller proves off-chain that<br/>ciphertext c holds a valid answer under key k"] --> a2["Buyer locks payment<br/>to hash of k"]
-    a2 --> a3["Seller reveals k on-chain<br/>to claim the payment"]
-    a3 --> a4["Anyone holding c<br/>can now decrypt it"]
-  end
-  subgraph Midnight["Private Bounties on Midnight"]
-    direction TB
-    b1["Poster locks a reward<br/>in a shielded coin"] --> b2["Solver proves in one circuit:<br/>answer passes the checker AND<br/>c encrypts it to the poster's key"]
-    b2 --> b3["Same transaction:<br/>c is stored, reward is paid"]
-    b3 --> b4["Only the poster<br/>can decrypt"]
-  end
-```
+![Classic ZKCP reveals the key on-chain; on Midnight the solver encrypts to the poster inside the proof](docs/images/zkcp-vs-midnight.svg)
 
 The key never goes on-chain. The solver encrypts **directly to the poster's public key** with a
 Diffie-Hellman key exchange on the Jubjub curve, and the proof shows it was done correctly.
@@ -73,46 +59,7 @@ Diffie-Hellman key exchange on the Jubjub curve, and the proof shows it was done
 | **Proof server** | Runs locally and generates the ZK proofs, so private inputs never leave the machine. |
 | **Midnight node and indexer** | Run the network and serve live contract state to the UI. |
 
-```mermaid
-flowchart LR
-  Poster(["Poster"])
-  Solver(["Solver"])
-  Observer(["Observer"])
-
-  subgraph PD["Poster's machine (trusted)"]
-    PUI["Bounty app"]
-    PW["Lace wallet"]
-    PPS["Proof server"]
-  end
-
-  subgraph SD["Solver's machine (trusted)"]
-    SUI["Bounty app"]
-    SW["Lace wallet"]
-    SPS["Proof server"]
-  end
-
-  subgraph NET["Midnight network (public)"]
-    MN["Node"]
-    Idx["Indexer"]
-    BC["Bounty contracts"]
-    TK["Test token contract"]
-  end
-
-  Poster --> PUI
-  Solver --> SUI
-  PUI --> PW
-  PUI --> PPS
-  SUI --> SW
-  SUI --> SPS
-  PW --> MN
-  SW --> MN
-  MN --> BC
-  MN --> TK
-  MN --> Idx
-  Idx --> PUI
-  Idx --> SUI
-  Idx --> Observer
-```
+![System context: poster and solver machines, each with the app, Lace and a local proof server, talking to the Midnight network](docs/images/system-context.svg)
 
 ## 5. Two modes
 
@@ -130,41 +77,7 @@ k and a hidden price (section 14).
 
 ## 6. Component architecture
 
-```mermaid
-flowchart TB
-  subgraph Browser["Browser: React + Vite app"]
-    UI["Screens<br/>board, post, solve, inbox, refund"]
-    API["BountyAPI (TypeScript)<br/>circuit calls, decryption, state streams"]
-    PSP["Private state store<br/>persistent and encrypted"]
-    ZKC["FetchZkConfigProvider<br/>prover and verifier keys"]
-    PDP["indexerPublicDataProvider"]
-    PP["httpClientProofProvider"]
-  end
-
-  Lace["Lace wallet<br/>DApp Connector API 4.0.1"]
-  PS["Proof server 8.1.x<br/>local"]
-
-  subgraph Net["Midnight network"]
-    MN["Node 1.0.400"]
-    Idx["Indexer 4.3.x<br/>GraphQL queries and subscriptions"]
-    BC["Bounty contracts<br/>one per checker template"]
-    TK["Test token contract"]
-  end
-
-  UI --> API
-  API --> PSP
-  API --> PDP
-  API --> PP
-  PP --> ZKC
-  PP --> PS
-  API -->|"balanceUnsealedTransaction, submitTransaction"| Lace
-  Lace -->|"getConfiguration: proof server, indexer URIs"| API
-  Lace --> MN
-  PDP --> Idx
-  MN --> Idx
-  MN --> BC
-  MN --> TK
-```
+![Component architecture: React app, BountyAPI and midnight-js providers, Lace, proof server, node, indexer and contracts](docs/images/components.svg)
 
 This follows the same wiring as the zk-loan example UI: `FetchZkConfigProvider`,
 `httpClientProofProvider` and `indexerPublicDataProvider`, with the wallet's `getConfiguration()`
@@ -207,31 +120,7 @@ time. One template contract hosts **many** bounties, each with its own public pa
 shared logic lives in modules imported with `import "<file>" prefix X_;`, which is how zk-loan
 pulls in its Schnorr module.
 
-```mermaid
-flowchart TB
-  subgraph Modules["Shared modules (future standalone examples)"]
-    ESC["escrow<br/>receiveShielded, insertCoin,<br/>mergeCoin, sendShielded"]
-    DL["deadline<br/>blockTimeLt, blockTimeGte"]
-    ECDH["ecdh<br/>ecMulGenerator, ecMul,<br/>jubjubPointX, jubjubPointY"]
-    SC["stream-cipher<br/>transientHash keystream"]
-    PSN["pseudonym<br/>persistentHash with<br/>domain separator"]
-  end
-
-  subgraph Templates["Template contracts"]
-    T1["bounty-preimage<br/>spike and smallest circuit"]
-    T2["bounty-factor<br/>classic demo"]
-    T3["bounty-signed-record<br/>data marketplace"]
-  end
-
-  SCH["schnorr module<br/>from zk-loan"]
-  TT["test-token<br/>mintShieldedToken faucet"]
-
-  T1 --> ESC & DL & ECDH & SC & PSN
-  T2 --> ESC & DL & ECDH & SC & PSN
-  T3 --> ESC & DL & ECDH & SC & PSN
-  T3 --> SCH
-  TT -.->|"reward token color"| Templates
-```
+![Contract modules: three template contracts importing shared escrow, deadline, ECDH, stream-cipher and pseudonym modules](docs/images/contract-modules.svg)
 
 There are no cross-contract calls on this stack, and none are needed. The test token is an
 ordinary shielded coin, and a template contract only checks its color.
@@ -270,35 +159,7 @@ TypeScript compute exactly what the circuit computes.
 
 ### Key exchange and verifiable encryption (inside `submit`)
 
-```mermaid
-flowchart LR
-  subgraph Private["Private: witnesses on the solver's device"]
-    m["answer m[0..N-1]<br/>Field elements"]
-    e["ephemeral scalar e<br/>fresh, 248 bits"]
-  end
-
-  PK["posterPk from ledger"]
-
-  subgraph Circuit["Proven in the submit circuit"]
-    CK{"checker(m, params)<br/>passes?"}
-    G2["S = ecMul(posterPk, e)"]
-    H1["k = transientHash(S.x, S.y, bountyId)"]
-    H2["c[i] = m[i] + transientHash(k, i)"]
-    G1["E = ecMulGenerator(e)"]
-  end
-
-  subgraph Public["Public: disclosed to the ledger"]
-    PC["c[0..N-1]"]
-    PE["E"]
-  end
-
-  m --> CK
-  m --> H2
-  e --> G2
-  PK --> G2
-  G2 --> H1 --> H2 --> PC
-  e --> G1 --> PE
-```
+![Inside submit: checker, ECDH with the poster key, keystream encryption, and what is disclosed](docs/images/submit-crypto.svg)
 
 The poster decrypts off-chain: `S = b·E` (same point, because `b·(e·G) = e·(b·G)`), then
 `k = transientHash(S, bountyId)`, then `m[i] = c[i] − transientHash(k, i)`.
@@ -344,19 +205,7 @@ linkable.
 **The fix (reusing shielded-chips' `claimWinnings` trick):** the solver adds a coin of their own
 with a secret nonce, and the contract merges **the solver's coin first**.
 
-```mermaid
-flowchart LR
-  ES["Escrow coin<br/>nonce PUBLIC"]
-  ST["Solver stake coin<br/>nonce known only to the solver<br/>stored as a commitment"]
-  M["mergeCoin(stake, escrow)<br/>nonce derived from the FIRST input"]
-  P["sendShielded to the solver<br/>payout nonce unguessable"]
-  ST -->|"1st input"| M
-  ES -->|"2nd input"| M
-  M --> P
-
-  BAD["Without the stake:<br/>payout nonce = H(escrow nonce)<br/>anyone can test a guessed wallet key"]
-  ES -.-> BAD
-```
+![Payout privacy: merging the solver's secret stake coin first makes the payout nonce unguessable](docs/images/payout-privacy.svg)
 
 The stake also works as anti-spam, and it comes back with the payout. If the bounty is
 already solved, `withdrawStake` returns it.
@@ -375,20 +224,7 @@ state. 🔬 Q2
 
 ## 10. Bounty lifecycle
 
-```mermaid
-stateDiagram-v2
-  [*] --> OPEN: postBounty (reward escrowed)
-  OPEN --> SOLVED: submit with a valid proof, before the deadline
-  OPEN --> REFUNDED: refund, after the deadline
-  SOLVED --> [*]
-  REFUNDED --> [*]
-  note right of OPEN
-    "Expired" is not stored.
-    It is OPEN with block time past the deadline.
-    submit checks blockTimeLt(deadline)
-    refund checks blockTimeGte(deadline)
-  end note
-```
+![Bounty lifecycle: OPEN to SOLVED on a valid submit, or to REFUNDED after the deadline](docs/images/bounty-lifecycle.svg)
 
 ## 11. User flows
 
