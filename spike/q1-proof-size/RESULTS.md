@@ -17,13 +17,13 @@ It matches the key sizes: each +1 in k roughly doubles the key.
 ## What this tells us
 
 - **The core is small.** Checker, key exchange and verifiable encryption fit in k = 11. The
-  feared cost of "encryption plus key exchange in one proof" doesn't show up.
+feared cost of "encryption plus key exchange in one proof" doesn't show up.
 - **Payload size is nearly free at this scale.** Going from 4 to 8 elements didn't change k.
 - **The checker's hash dominates.** A SHA-256 checker costs 8x the rows of the whole
-  key-exchange-and-encryption core. Templates should use `transientHash` where the checker
-  allows it.
+key-exchange-and-encryption core. Templates should use `transientHash` where the checker
+allows it.
 - The circuit range-checks the ephemeral scalar (`constrain_bits` on the 248-bit witness), as
-  designed.
+designed.
 
 ## Proving time
 

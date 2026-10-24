@@ -1,0 +1,179 @@
+// Spike Q2: escrow, payout privacy, deadlines and atomicity, on a real network.
+//
+// Stripped-down bounty: no checker and no encryption (Q1 covered those). A
+// single Field stands in for the encrypted answer, so we can check that it is
+// written if and only if the payout happens.
+//
+//   postBounty     poster escrows a fresh reward coin. The coin is stored
+//                  publicly, because the solver has to be able to spend it.
+//   stake          solver deposits a fresh coin of their own. Only a
+//                  commitment is stored.
+//   submit         before the deadline: merge stake FIRST, then escrow, and pay
+//                  the merged coin to the solver. The payout nonce derives from
+//                  the stake's secret nonce, so it is unlinkable.
+//   withdrawStake  solver takes their stake back once the bounty is closed.
+//   refund         after the deadline: poster takes the reward back.
+//   submitOneTx    Q3: same as submit, but with a coin received in the same
+//                  transaction merged first, so no separate stake step.
+//
+// Patterns follow examples/shielded-chips (roulette.compact, LESSONS.md).
+
+pragma language_version 0.23;
+import CompactStandardLibrary;
+
+export enum Status { OPEN, SOLVED, REFUNDED }
+
+export struct Bounty {
+  poster: Bytes<32>;
+  deadline: Uint<64>;
+  status: Status;
+}
+
+export ledger bounties: Map<Bytes<32>, Bounty>;
+// v1 open bounty: the reward coin is public so a third party can spend it.
+// It is a fresh coin, so its nonce doesn't point at the poster's wallet.
+export ledger escrows: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
+// Stake commitments, keyed by hash(bounty id, solver pseudonym).
+export ledger stakes: Map<Bytes<32>, Bytes<32>>;
+// Stand-in for the ciphertext, written only by a successful submit.
+export ledger deliveries: Map<Bytes<32>, Field>;
+
+witness localSecretKey(): Bytes<32>;
+witness stakeSalt(): Bytes<32>;
+// The solver's stake coin, replayed from private state. mt_index is supplied
+// here because it is only known once the stake transaction lands.
+witness stakeCoin(): QualifiedShieldedCoinInfo;
+
+// Test reward token, minted by this contract so the spike needs nothing else.
+circuit tokenColor(): Bytes<32> {
+  return tokenType(pad(32, "bounty:test-token"), kernel.self());
+}
+
+export circuit mintTestTokens(amount: Uint<64>, nonce: Bytes<32>, recipient: ZswapCoinPublicKey): [] {
+  mintShieldedToken(pad(32, "bounty:test-token"), disclose(amount), disclose(nonce),
+                    left<ZswapCoinPublicKey, ContractAddress>(disclose(recipient)));
+}
+
+// Per-deployment pseudonym: kernel.self() is mixed in so the same secret gives
+// unrelated pseudonyms in different deployments.
+circuit pseudonym(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "bounty:pk:"), kernel.self().bytes, sk]);
+}
+
+circuit stakeKey(id: Bytes<32>, who: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([id, who]);
+}
+
+// mt_index is left out: it is assigned when the stake transaction lands.
+circuit coinCommit(coin: QualifiedShieldedCoinInfo, salt: Bytes<32>): Bytes<32> {
+  return persistentCommit<Vector<3, Bytes<32>>>([coin.nonce, coin.color, coin.value as Bytes<32>], salt);
+}
+
+export circuit postBounty(id: Bytes<32>, coin: ShieldedCoinInfo, deadline: Uint<64>): [] {
+  const bountyId = disclose(id);
+  assert(!bounties.member(bountyId), "Bounty already exists");
+  assert(disclose(coin.color) == tokenColor(), "Reward must be the test token");
+
+  receiveShielded(disclose(coin));
+  escrows.insertCoin(bountyId, disclose(coin), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  bounties.insert(bountyId, Bounty {
+    poster: disclose(pseudonym(localSecretKey())),
+    deadline: disclose(deadline),
+    status: Status.OPEN
+  });
+}
+
+export circuit stake(id: Bytes<32>, coin: ShieldedCoinInfo): [] {
+  const bountyId = disclose(id);
+  assert(bounties.member(bountyId), "No such bounty");
+  assert(bounties.lookup(bountyId).status == Status.OPEN, "Bounty is closed");
+  assert(disclose(coin.color) == tokenColor(), "Stake must be the test token");
+
+  const key = disclose(stakeKey(bountyId, pseudonym(localSecretKey())));
+  assert(!stakes.member(key), "Already staked");
+
+  receiveShielded(disclose(coin));
+  const q = QualifiedShieldedCoinInfo {
+    nonce: coin.nonce, color: coin.color, value: coin.value, mt_index: 0 as Uint<64>
+  };
+  stakes.insert(key, disclose(coinCommit(q, stakeSalt())));
+}
+
+export circuit submit(id: Bytes<32>, answer: Field): [] {
+  const bountyId = disclose(id);
+  assert(bounties.member(bountyId), "No such bounty");
+  const b = bounties.lookup(bountyId);
+  assert(b.status == Status.OPEN, "Bounty is closed");
+  assert(blockTimeLt(b.deadline), "Deadline has passed");
+
+  const key = disclose(stakeKey(bountyId, pseudonym(localSecretKey())));
+  assert(stakes.member(key), "No stake");
+  const s = stakeCoin();
+  assert(stakes.lookup(key) == disclose(coinCommit(s, stakeSalt())), "Stake does not match commitment");
+
+  // Stake first: the merged nonce derives from the stake's secret nonce only.
+  const merged = mergeCoin(disclose(s), escrows.lookup(bountyId));
+  sendShielded(
+    QualifiedShieldedCoinInfo { nonce: merged.nonce, color: merged.color, value: merged.value, mt_index: 0 as Uint<64> },
+    left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey()),
+    merged.value
+  );
+
+  deliveries.insert(bountyId, disclose(answer));
+  bounties.insert(bountyId, Bounty { poster: b.poster, deadline: b.deadline, status: Status.SOLVED });
+  escrows.remove(bountyId);
+  stakes.remove(key);
+}
+
+export circuit withdrawStake(id: Bytes<32>): [] {
+  const bountyId = disclose(id);
+  assert(bounties.lookup(bountyId).status != Status.OPEN, "Bounty is still open");
+
+  const key = disclose(stakeKey(bountyId, pseudonym(localSecretKey())));
+  assert(stakes.member(key), "No stake");
+  const s = stakeCoin();
+  assert(stakes.lookup(key) == disclose(coinCommit(s, stakeSalt())), "Stake does not match commitment");
+
+  sendShielded(disclose(s), left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey()), disclose(s.value));
+  stakes.remove(key);
+}
+
+export circuit refund(id: Bytes<32>): [] {
+  const bountyId = disclose(id);
+  assert(bounties.member(bountyId), "No such bounty");
+  const b = bounties.lookup(bountyId);
+  assert(b.status == Status.OPEN, "Bounty is closed");
+  assert(b.poster == disclose(pseudonym(localSecretKey())), "Only the poster can refund");
+  assert(blockTimeGte(b.deadline), "Deadline has not passed");
+
+  const esc = escrows.lookup(bountyId);
+  sendShielded(esc, left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey()), esc.value);
+  bounties.insert(bountyId, Bounty { poster: b.poster, deadline: b.deadline, status: Status.REFUNDED });
+  escrows.remove(bountyId);
+}
+
+// Q3: can a coin received in this same transaction be the FIRST merge input?
+// If yes, the solver needs one transaction instead of stake + submit.
+export circuit submitOneTx(id: Bytes<32>, answer: Field, fresh: ShieldedCoinInfo): [] {
+  const bountyId = disclose(id);
+  assert(bounties.member(bountyId), "No such bounty");
+  const b = bounties.lookup(bountyId);
+  assert(b.status == Status.OPEN, "Bounty is closed");
+  assert(blockTimeLt(b.deadline), "Deadline has passed");
+  assert(disclose(fresh.color) == tokenColor(), "Stake must be the test token");
+
+  receiveShielded(disclose(fresh));
+  const first = QualifiedShieldedCoinInfo {
+    nonce: fresh.nonce, color: fresh.color, value: fresh.value, mt_index: 0 as Uint<64>
+  };
+  const merged = mergeCoin(disclose(first), escrows.lookup(bountyId));
+  sendShielded(
+    QualifiedShieldedCoinInfo { nonce: merged.nonce, color: merged.color, value: merged.value, mt_index: 0 as Uint<64> },
+    left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey()),
+    merged.value
+  );
+
+  deliveries.insert(bountyId, disclose(answer));
+  bounties.insert(bountyId, Bounty { poster: b.poster, deadline: b.deadline, status: Status.SOLVED });
+  escrows.remove(bountyId);
+}
