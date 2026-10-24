@@ -1,0 +1,120 @@
+// Spike Q1: how much does each piece of `submit` cost in-circuit?
+//
+// One contract, several circuits, so a single compile measures them side by
+// side. Not production code: no escrow, no deadline, no access control.
+//
+//   checkOnly    checker alone (transientHash of the answer equals target)
+//   encryptOnly  checker + keystream encryption of 4 elements, no key exchange
+//   submit4      checker + Jubjub key exchange + encryption of 4 elements
+//   submit8      same with 8 elements (about 250 bytes of payload)
+//   submitSha    submit4 with a persistentHash (SHA-256) checker instead
+
+pragma language_version 0.23;
+import CompactStandardLibrary;
+
+export ledger posterPk: JubjubPoint;
+export ledger target: Field;
+export ledger targetSha: Bytes<32>;
+export ledger bountyId: Field;
+
+export ledger ephemeralPk: JubjubPoint;
+export ledger c4: Vector<4, Field>;
+export ledger c8: Vector<8, Field>;
+
+witness answer4(): Vector<4, Field>;
+witness answer8(): Vector<8, Field>;
+// Fresh per submission. 248 bits keeps it below the Jubjub order.
+witness ephemeralScalar(): Uint<248>;
+// Only used by encryptOnly, to measure encryption without the key exchange.
+witness symmetricKey(): Field;
+
+constructor(pk: JubjubPoint, t: Field, tSha: Bytes<32>, id: Field) {
+  posterPk = disclose(pk);
+  target = disclose(t);
+  targetSha = disclose(tSha);
+  bountyId = disclose(id);
+}
+
+// Keystream element i for key k. The bounty id is mixed in so two bounties
+// never share a keystream even if a key repeats.
+pure circuit keystream(k: Field, id: Field, i: Field): Field {
+  return transientHash<Vector<3, Field>>([k, id, i]);
+}
+
+// ECDH: the solver's ephemeral scalar times the poster's public key, hashed
+// down to one field element.
+pure circuit sharedKey(e: Field, pk: JubjubPoint, id: Field): Field {
+  const s = ecMul(pk, e);
+  return transientHash<Vector<3, Field>>([jubjubPointX(s), jubjubPointY(s), id]);
+}
+
+pure circuit encrypt4(m: Vector<4, Field>, k: Field, id: Field): Vector<4, Field> {
+  return [m[0] + keystream(k, id, 0), m[1] + keystream(k, id, 1),
+          m[2] + keystream(k, id, 2), m[3] + keystream(k, id, 3)];
+}
+
+pure circuit encrypt8(m: Vector<8, Field>, k: Field, id: Field): Vector<8, Field> {
+  return [m[0] + keystream(k, id, 0), m[1] + keystream(k, id, 1),
+          m[2] + keystream(k, id, 2), m[3] + keystream(k, id, 3),
+          m[4] + keystream(k, id, 4), m[5] + keystream(k, id, 5),
+          m[6] + keystream(k, id, 6), m[7] + keystream(k, id, 7)];
+}
+
+// Off-chain helpers. The benchmark calls these from JS so it uses exactly the
+// circuit's math, and decrypt4 is the poster's side of the round trip.
+export pure circuit answerHash4(m: Vector<4, Field>): Field {
+  return transientHash<Vector<4, Field>>(m);
+}
+
+export pure circuit answerHash8(m: Vector<8, Field>): Field {
+  return transientHash<Vector<8, Field>>(m);
+}
+
+export pure circuit answerSha(m: Vector<4, Field>): Bytes<32> {
+  return persistentHash<Vector<4, Field>>(m);
+}
+
+export pure circuit publicKey(sk: Field): JubjubPoint {
+  return ecMulGenerator(sk);
+}
+
+export pure circuit decrypt4(c: Vector<4, Field>, ephemeral: JubjubPoint, sk: Field, id: Field): Vector<4, Field> {
+  const k = sharedKey(sk, ephemeral, id);
+  return [c[0] - keystream(k, id, 0), c[1] - keystream(k, id, 1),
+          c[2] - keystream(k, id, 2), c[3] - keystream(k, id, 3)];
+}
+
+export circuit checkOnly(): [] {
+  const m = answer4();
+  assert(transientHash<Vector<4, Field>>(m) == target, "Wrong answer");
+}
+
+export circuit encryptOnly(): [] {
+  const m = answer4();
+  assert(transientHash<Vector<4, Field>>(m) == target, "Wrong answer");
+  c4 = disclose(encrypt4(m, symmetricKey(), bountyId));
+}
+
+export circuit submit4(): [] {
+  const m = answer4();
+  assert(transientHash<Vector<4, Field>>(m) == target, "Wrong answer");
+  const e = ephemeralScalar() as Field;
+  ephemeralPk = disclose(ecMulGenerator(e));
+  c4 = disclose(encrypt4(m, sharedKey(e, posterPk, bountyId), bountyId));
+}
+
+export circuit submit8(): [] {
+  const m = answer8();
+  assert(transientHash<Vector<8, Field>>(m) == target, "Wrong answer");
+  const e = ephemeralScalar() as Field;
+  ephemeralPk = disclose(ecMulGenerator(e));
+  c8 = disclose(encrypt8(m, sharedKey(e, posterPk, bountyId), bountyId));
+}
+
+export circuit submitSha(): [] {
+  const m = answer4();
+  assert(persistentHash<Vector<4, Field>>(m) == targetSha, "Wrong answer");
+  const e = ephemeralScalar() as Field;
+  ephemeralPk = disclose(ecMulGenerator(e));
+  c4 = disclose(encrypt4(m, sharedKey(e, posterPk, bountyId), bountyId));
+}
