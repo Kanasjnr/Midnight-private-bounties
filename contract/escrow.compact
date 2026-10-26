@@ -1,0 +1,45 @@
+// Shielded escrow building blocks for Private Bounties.
+//
+// This file is a MODULE, not a contract: the bounty contracts pull it in with
+// `import "escrow" prefix Escrow_;` and keep the coins in their own ledger.
+//
+// The rule that shapes it (shielded-chips LESSONS.md): every coin derived from
+// a coin takes its nonce from the source coin's nonce alone, and for mergeCoin
+// from the FIRST input only. A coin whose nonce is public is therefore a
+// linkability oracle for whatever is paid out of it.
+
+module escrow {
+  import CompactStandardLibrary;
+
+  // Takes custody of a coin the caller's wallet pays for, and returns it in
+  // the form the contract needs to spend it later (mt_index is assigned when
+  // the transaction lands). The client must build `coin` with a fresh random
+  // nonce, never a wallet coin's nonce, so it points at nobody.
+  export circuit receiveFresh(coin: ShieldedCoinInfo, color: Bytes<32>): QualifiedShieldedCoinInfo {
+    assert(disclose(coin.color) == color, "Wrong token");
+    assert(disclose(coin.value) > 0, "Coin has no value");
+    receiveShielded(disclose(coin));
+    return QualifiedShieldedCoinInfo {
+      nonce: coin.nonce, color: coin.color, value: coin.value, mt_index: 0 as Uint<64>
+    };
+  }
+
+  // Pays `first` merged with `held` to `to`, as one coin. The payout's nonce
+  // derives from `first` only, so pass the coin whose nonce nobody else knows
+  // first (the solver's fresh coin), and the publicly stored escrow second.
+  export circuit payMerged(first: QualifiedShieldedCoinInfo, held: QualifiedShieldedCoinInfo,
+                           to: ZswapCoinPublicKey): [] {
+    const merged = mergeCoin(disclose(first), held);
+    sendShielded(
+      QualifiedShieldedCoinInfo { nonce: merged.nonce, color: merged.color, value: merged.value, mt_index: 0 as Uint<64> },
+      left<ZswapCoinPublicKey, ContractAddress>(to),
+      merged.value
+    );
+  }
+
+  // Pays all of `held` to `to`. Used for refunds: the payout is linkable to
+  // `to` by anyone who already suspects it, because `held`'s nonce is public.
+  export circuit payOut(held: QualifiedShieldedCoinInfo, to: ZswapCoinPublicKey): [] {
+    sendShielded(held, left<ZswapCoinPublicKey, ContractAddress>(to), held.value);
+  }
+}

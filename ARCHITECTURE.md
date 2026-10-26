@@ -85,22 +85,24 @@ supplying the endpoints.
 **One difference:** zk-loan keeps private state **in memory**. We can't, because the poster's
 decryption key has to survive a reload, so we need a persistent, encrypted browser store (Q8).
 
-### Repository layout (planned)
+### Repository layout
 
-It mirrors a midnight-examples example, so pieces can move there later.
+It mirrors a midnight-examples example, so pieces can move there later, and it runs inside a
+midnight-examples checkout (as `examples/private-bounties`) for its simulator package, wallets and
+devnet. Module file names use underscores because a module's name must be an identifier.
 
 ```
 private-bounties/
 ├── contract/
-│   ├── escrow.compact            module: shielded escrow and payout
-│   ├── deadline.compact          module: block-time windows
-│   ├── ecdh.compact              module: Jubjub key exchange
-│   ├── stream-cipher.compact     module: verifiable encryption
-│   ├── pseudonym.compact         module: domain-separated keys
-│   ├── bounty-preimage.compact   template contracts (import the modules)
-│   ├── bounty-factor.compact
-│   ├── bounty-signed-record.compact
-│   ├── test-token.compact
+│   ├── escrow.compact            module: receiveFresh, payMerged, payOut
+│   ├── deadline.compact          module: assertOpen, assertExpired
+│   ├── ecdh.compact              module: publicKey, sharedKey
+│   ├── stream_cipher.compact     module: keystream, encrypt4, decrypt4
+│   ├── pseudonym.compact         module: derive
+│   ├── bounty_preimage.compact   template contract (built)
+│   ├── bounty_factor.compact     template contract (planned)
+│   ├── bounty_signed_record.compact  template contract (planned)
+│   ├── test_token.compact        test-only reward token
 │   ├── witnesses.ts
 │   └── index.ts
 ├── src/          API layer, providers, simulator and integration tests
@@ -136,18 +138,27 @@ bounties:   Map<BountyId, {
               status:   OPEN | SOLVED | REFUNDED }>
 escrows:    Map<BountyId, QualifiedShieldedCoinInfo>   // v1: public, a fresh coin, via insertCoin
 deliveries: Map<BountyId, { E: JubjubPoint, c: Vector<N, Field> }>
-tokenColor: sealed Bytes<32>                           // accepted reward token
+rewardColor: sealed Bytes<32>                          // accepted reward token, set at deploy
 ```
+
+In `bounty_preimage` the checker's parameter is `target: Field`, and the payload is four field
+elements (`Vector<4, Field>`, about 124 bytes).
 
 ### Circuits
 
 | Circuit | Caller | What the proof shows | Public effects |
 |---|---|---|---|
-| `postBounty` | Poster | Poster pseudonym comes from their secret; the coin has the right color | Bounty record and escrow coin |
+| `postBounty` | Poster | Poster pseudonym comes from their secret; the coin has the reward color and a non-zero value; the deadline is still ahead | Bounty record and escrow coin |
 | `submit` | Solver | Checker passes, ECDH is correct, c encrypts the answer, before the deadline. Receives the solver's fresh coin and merges it first | `E`, `c`, status `SOLVED`, one shielded payout: reward plus the solver's coin |
 | `refund` | Poster | Pseudonym matches; deadline passed; still `OPEN` | Status `REFUNDED`, escrow returned |
-| `check` (pure) | Browser | No proof: runs in JS | None: pre-checks an answer before paying for a proof |
-| `deriveKey`, `keystream` (pure) | Browser | No proof: runs in JS | None: decryption uses the exact circuit math |
+| `answerHash`, `checkAnswer` (pure) | Browser | No proof: runs in JS | None: builds a bounty's target, and pre-checks an answer before paying for a proof |
+| `posterPublicKey`, `decrypt` (pure) | Browser | No proof: runs in JS | None: the poster's key and decryption, with the exact circuit math |
+
+Three secrets stay separate, as shielded-chips' lessons advise:
+- the poster's identity secret `sk` (pseudonym, in-circuit);
+- the poster's encryption key `b` (off-chain only; only `b·G` is public);
+- the solver's ephemeral scalar `e`, which a witness draws fresh for every submission and which
+  is never stored.
 
 Exporting pure circuits for off-chain use is the zk-loan pattern: `schnorrChallenge` lets
 TypeScript compute exactly what the circuit computes.
