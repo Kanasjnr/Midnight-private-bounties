@@ -15,6 +15,10 @@
 
 // Schnorr signature verification polyfill for the Jubjub curve.
 //
+// Modified for Private Bounties from midnight-examples' zk-loan: the challenge
+// reduction below also requires the canonical representation (see "Unique
+// reduction"). Otherwise unchanged.
+//
 // Ported from midnightntwrk/example-zkloan (contract/src/schnorr.compact).
 // Temporary: to be replaced by a standard-library Schnorr verifier once one
 // ships in a Compact compiler release.
@@ -87,6 +91,13 @@ module schnorr {
     assert(disclose(q) * TWO_248 + (disclose(cTruncated) as Field) == cFull,
            "Invalid challenge reduction"
            );
+    // Unique reduction: the field prime is about 115.93 * 2^248, so with q up to
+    // 115 some hashes have two (q, r) pairs that pass the check above. Requiring
+    // q * 2^248 + r < p (q < 115, or q == 115 and r below p - 115 * 2^248)
+    // leaves exactly one.
+    assert(disclose(q) < 115 ||
+           disclose(cTruncated) < 419897588050555816515462086314444731729426576509415695503572133883854979073,
+           "Non-canonical challenge reduction");
     const c: Field = disclose(cTruncated) as Field;
     // s*G == R + c*pk
     const lhs: JubjubPoint = ecMulGenerator(response);

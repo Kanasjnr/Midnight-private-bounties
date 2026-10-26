@@ -11,6 +11,7 @@ import {
   type Delivery,
 } from '../../contract/managed/bounty_preimage/contract/index.js';
 import { bountyWitnesses, createBountyPrivateState, randomScalar } from '../../contract/witnesses.js';
+import { posterKeyFor } from '../../contract/keys.js';
 
 const REWARD = 100n;
 const STAKE = 10n;
@@ -103,6 +104,36 @@ describe('bounty_preimage (in memory)', () => {
       expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD, otherColor), pk, f.target, soon), 'Wrong token');
       expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(0n), pk, f.target, soon), 'Coin has no value');
       expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), pk, f.target, nowSec() - 1n), 'Deadline has passed');
+    });
+  });
+
+  describe('poster keys (audit H2, L1)', () => {
+    it("can't link a poster's bounties through the pseudonym or the encryption key", async () => {
+      const f = setup();
+      const seed = rand32();
+      const ids = [rand32(), rand32()];
+      for (const id of ids) {
+        const b = await posterKeyFor(seed, f.sim.address, id);
+        f.asPoster().call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(b), f.target, nowSec() + 3600n);
+      }
+      const [b1, b2] = ids.map((id) => f.sim.ledger().bounties.lookup(id));
+      expect(hex(b1.poster)).not.toEqual(hex(b2.poster));
+      expect(b1.posterPk.x).not.toEqual(b2.posterPk.x);
+
+      // The poster still decrypts each delivery with that bounty's own key.
+      f.asSolver().call('submit', ids[1], freshCoin(STAKE));
+      const key = await posterKeyFor(seed, f.sim.address, ids[1]);
+      expect(pureCircuits.decrypt(f.sim.ledger().deliveries.lookup(ids[1]), key, ids[1])).toEqual(f.answer);
+    });
+
+    it('rejects a poster key nobody should encrypt to', () => {
+      const f = setup();
+      const soon = nowSec() + 3600n;
+      // The identity point would make every shared key public.
+      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), { x: 0n, y: 1n }, f.target, soon), 'Invalid public key');
+      // A point that is not on the curve can't be used at all.
+      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), { x: 1n, y: 2n }, f.target, soon));
+      expect(f.sim.ledger().bounties.size()).toEqual(0n);
     });
   });
 

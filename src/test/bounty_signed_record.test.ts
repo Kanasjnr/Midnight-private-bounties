@@ -52,7 +52,8 @@ const config = getConfig();
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
-const FIELD = 1n; // the record's second field holds the amount
+const SCHEMA = BigInt('0x' + Buffer.from('pb:bank-statement:v1').toString('hex'));
+const FIELD = 1n; // record[1] holds the amount
 const THRESHOLD = 3000n;
 
 type Party = { name: string; wallet: MidnightWalletProvider; prov: BountyProviders; psId: string; sk: Uint8Array };
@@ -146,10 +147,10 @@ describe(`bounty_signed_record on ${config.networkId}`, () => {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
     const issuerPk = pure.publicKey(issuerSk);
     await call(alice, 'post', 'postBounty', [
-      id, freshCoin(color, REWARD), pure.publicKey(posterKey), issuerPk, FIELD, THRESHOLD, deadline,
+      id, freshCoin(color, REWARD), pure.publicKey(posterKey), issuerPk, SCHEMA, FIELD, THRESHOLD, deadline,
     ]);
-    // [subject, amount, issued at, nonce], signed by the issuer off-chain.
-    const record = [randomScalar(), 5000n, BigInt(Math.floor(Date.now() / 1000)), randomScalar()];
+    // [schema tag, amount, issued at, subject], signed by the issuer off-chain.
+    const record = [SCHEMA, 5000n, BigInt(Math.floor(Date.now() / 1000)), randomScalar()];
     const signature = signRecord(issuerSk, record);
 
     await syncWallet(logger, bob.wallet.wallet, 600_000);

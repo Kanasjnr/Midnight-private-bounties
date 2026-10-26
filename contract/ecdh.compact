@@ -13,6 +13,17 @@ module ecdh {
     return ecMulGenerator(sk);
   }
 
+  // Rejects a public key nobody should encrypt to. Using `pk` in a curve
+  // operation makes the proof check that it is on the curve and in the
+  // prime-order subgroup; the assert rejects the identity point, which passes
+  // those checks but would make every shared key public.
+  export circuit assertValidPublicKey(pk: JubjubPoint): [] {
+    const g = ecMulGenerator(1);
+    const sum = ecAdd(pk, g);
+    assert(!(jubjubPointX(sum) == jubjubPointX(g) && jubjubPointY(sum) == jubjubPointY(g)),
+           "Invalid public key");
+  }
+
   // The shared key between scalar `sk` and someone's public key `pk`, hashed
   // to one field element and bound to `context`. Both sides get the same
   // value: the solver from (e, posterPk), the poster from (b, e·G).

@@ -9,6 +9,10 @@
 //       transaction whole, so they keep their coin.
 //   D4  Refund: rejected before the deadline and for a non-poster; after the
 //       deadline the poster gets the reward back.
+//   D5  A submit started before the deadline but landing after it is rejected
+//       whole: the bounty stays open and the solver keeps their coin.
+//
+// The poster derives a separate encryption key for every bounty (keys.ts).
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
@@ -46,6 +50,7 @@ import {
   type BountyPreimageLedger,
 } from '../../contract/index.js';
 import { createBountyPrivateState, randomScalar, NO_ANSWER } from '../../contract/witnesses.js';
+import { posterKeyFor } from '../../contract/keys.js';
 
 globalThis.WebSocket = WebSocket as unknown as typeof globalThis.WebSocket;
 
@@ -54,8 +59,8 @@ const config = getConfig();
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
-// D4, D1, D2 and D3 each escrow one reward, and D2's and D4's stay locked until the end.
-const BOUNTIES = 4n;
+// D4, D1, D2, D3 and D5 each escrow one reward; D2's and D5's stay locked.
+const BOUNTIES = 5n;
 
 const nowSec = (): number => Math.floor(Date.now() / 1000);
 const newId = (): Uint8Array => new Uint8Array(randomBytes(32));
@@ -94,7 +99,7 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
   let address: ContractAddress;
   let color: TokenColor;
 
-  const posterKey = randomScalar(); // b: the poster's encryption secret, off-chain only
+  const posterSeed = new Uint8Array(randomBytes(32)); // derives the poster's key per bounty
   const D4 = newId();
   let d4Deadline = 0;
 
@@ -125,9 +130,10 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
 
   async function post(id: Uint8Array, answer: bigint[], deadline: number, label: string) {
     const reward = freshCoin(color, REWARD);
-    await call(alice, label, 'postBounty', [id, reward, pure.posterPublicKey(posterKey), pure.answerHash(answer), BigInt(deadline)]);
+    const key = await posterKeyFor(posterSeed, address, id);
+    await call(alice, label, 'postBounty', [id, reward, pure.posterPublicKey(key), pure.answerHash(answer), BigInt(deadline)]);
     await syncWallet(logger, alice.wallet.wallet, 600_000);
-    return reward;
+    return { reward, key };
   }
 
   beforeAll(async () => {
@@ -200,7 +206,7 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
   it('D1: one-transaction submit pays the solver; the poster decrypts; nothing secret is public', async () => {
     const id = newId();
     const answer = randomAnswer();
-    const reward = await post(id, answer, nowSec() + 3600, 'D1 postBounty');
+    const { reward, key } = await post(id, answer, nowSec() + 3600, 'D1 postBounty');
 
     const bobBefore = await balance(bob);
     const stake = freshCoin(color, STAKE);
@@ -212,14 +218,15 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
     expect(l.bounties.lookup(id).status).toEqual(Status.SOLVED);
     expect(l.escrows.member(id)).toBe(false);
     const delivery = l.deliveries.lookup(id);
-    expect(pure.decrypt(delivery, posterKey, id)).toEqual(answer);
+    expect(pure.decrypt(delivery, key, id)).toEqual(answer);
 
     const payout = (await shieldedCoins(bob.wallet, color)).find((c) => c.value === REWARD + STAKE);
     expect(payout).toBeDefined();
     const secrets: Record<string, Uint8Array> = {
       posterSk: alice.sk,
       solverSk: bob.sk,
-      posterKey: fieldBytes(posterKey),
+      posterKey: fieldBytes(key),
+      posterSeed,
       stakeNonce: stake.nonce,
       payoutNonce: payout!.nonce,
       solverCoinKey: encodeCoinPublicKey(bob.wallet.getCoinPublicKey()),
@@ -275,5 +282,28 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
     const aliceAfter = await waitForShieldedBalance(alice.wallet, color, aliceBefore + REWARD, { logger });
     expect(aliceAfter - aliceBefore).toEqual(REWARD);
     expect((await query()).bounties.lookup(D4).status).toEqual(Status.REFUNDED);
+  }, LONG);
+
+  it('D5: a submit landing after the deadline is rejected whole; the solver keeps their coin', async () => {
+    const id = newId();
+    const answer = randomAnswer();
+    // Long enough for the post to land (about 36 s here), short enough that a
+    // proven submit (about 65 s) lands after it.
+    await post(id, answer, nowSec() + 60, 'D5 postBounty');
+    const bobBefore = await balance(bob);
+
+    let outcome = 'accepted';
+    try {
+      await call(bob, 'D5 late submit', 'submit', [id, freshCoin(color, STAKE)], answer);
+    } catch (e) {
+      const msg = errText(e);
+      outcome = /Deadline has passed/.test(msg) ? 'rejected before proving' : 'rejected by the node';
+      logger.info(`D5: ${outcome}: ${msg.slice(0, 300)}`);
+    }
+    expect(outcome).not.toEqual('accepted');
+    expect((await balance(bob)) - bobBefore).toEqual(0n);
+    const l = await query();
+    expect(l.bounties.lookup(id).status).toEqual(Status.OPEN);
+    expect(l.deliveries.member(id)).toBe(false);
   }, LONG);
 });
