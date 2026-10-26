@@ -8,8 +8,8 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "compile": "compact compile +0.31.1 contract/bounty_preimage.compact contract/managed/bounty_preimage && compact compile +0.31.1 contract/bounty_factor.compact contract/managed/bounty_factor && compact compile +0.31.1 contract/test_token.compact contract/managed/test_token",
-    "compile:fast": "compact compile +0.31.1 --skip-zk contract/bounty_preimage.compact contract/managed/bounty_preimage && compact compile +0.31.1 --skip-zk contract/bounty_factor.compact contract/managed/bounty_factor && compact compile +0.31.1 --skip-zk contract/test_token.compact contract/managed/test_token",
+    "compile": "compact compile +0.31.1 contract/bounty_preimage.compact contract/managed/bounty_preimage && compact compile +0.31.1 contract/bounty_factor.compact contract/managed/bounty_factor && compact compile +0.31.1 contract/bounty_signed_record.compact contract/managed/bounty_signed_record && compact compile +0.31.1 contract/test_token.compact contract/managed/test_token",
+    "compile:fast": "compact compile +0.31.1 --skip-zk contract/bounty_preimage.compact contract/managed/bounty_preimage && compact compile +0.31.1 --skip-zk contract/bounty_factor.compact contract/managed/bounty_factor && compact compile +0.31.1 --skip-zk contract/bounty_signed_record.compact contract/managed/bounty_signed_record && compact compile +0.31.1 --skip-zk contract/test_token.compact contract/managed/test_token",
     "typecheck": "tsc --noEmit -p .",
     "test": "NODE_OPTIONS='--experimental-vm-modules' vitest run --exclude 'src/**/*.sim.test.ts'",
     "test:sim": "vitest run --passWithNoTests .sim.test.ts",

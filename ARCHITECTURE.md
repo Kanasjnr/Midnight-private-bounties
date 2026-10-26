@@ -101,9 +101,11 @@ private-bounties/
 │   ├── pseudonym.compact         module: derive
 │   ├── bounty_preimage.compact   template contract (built)
 │   ├── bounty_factor.compact     template contract (built)
-│   ├── bounty_signed_record.compact  template contract (planned)
+│   ├── bounty_signed_record.compact  template contract (built)
+│   ├── schnorr.compact           module from zk-loan: in-circuit Schnorr verification
 │   ├── test_token.compact        test-only reward token
-│   ├── witnesses.ts
+│   ├── witnesses.ts              one generic set of witnesses for every template
+│   ├── signing.ts                off-chain Schnorr signing, for issuers of signed records
 │   └── index.ts
 ├── src/          API layer, providers, simulator and integration tests
 ├── ui/           React app, started from midnight-examples templates/ui
@@ -141,8 +143,10 @@ deliveries: Map<BountyId, { E: JubjubPoint, c: Vector<N, Field> }>
 rewardColor: sealed Bytes<32>                          // accepted reward token, set at deploy
 ```
 
-In `bounty_preimage` the checker's parameter is `target: Field`, and the payload is four field
-elements (`Vector<4, Field>`, about 124 bytes).
+In `bounty_preimage` the checker's parameter is `target: Field`; `bounty_factor` stores its N in
+the same slot. `bounty_signed_record` replaces it with `issuerPk: JubjubPoint`, `field: Uint<8>`
+and `threshold: Uint<64>`. In every template the payload is four field elements
+(`Vector<4, Field>`, about 124 bytes).
 
 ### Circuits
 
@@ -534,7 +538,7 @@ flowchart LR
 |---|---|---|---|---|
 | `preimage` | x with `transientHash(x) = target` | target | x | Smallest circuit, used by the spike |
 | `factor` | p, q > 1 with `p × q = N` | N (below 2^128), in the same `target` slot | p, q, cast to 64-bit integers | The classic ZKCP demo. Built: the casts stop fake factors that only multiply to N modulo the field |
-| `signed-record` | An issuer-signed record whose field f ≥ X | issuer key, f, X | Record and signature | Real data-marketplace use. Reuses zk-loan's Schnorr module |
+| `signed-record` | An issuer-signed record whose field f ≥ X | issuer key, f (0 to 3), X | Record and signature | Real data-marketplace use. Built: zk-loan's Schnorr module verifies the signature in-circuit, and f is compared as a 64-bit integer. Any record the issuer signed qualifies, so binding it to a subject is the issuer's job |
 
 Rule from Q1: checkers use `transientHash` wherever they can. A SHA-256 (`persistentHash`)
 checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slower to prove.

@@ -24,6 +24,7 @@ import { type NetworkConfig } from './config.js';
 import {
   type BountyFactorImpureCircuits,
   type BountyPreimageImpureCircuits,
+  type BountySignedRecordImpureCircuits,
   type TestTokenImpureCircuits,
 } from '../contract/index.js';
 
@@ -33,6 +34,7 @@ import {
 export type BountyCircuits =
   | keyof BountyPreimageImpureCircuits<unknown>
   | keyof BountyFactorImpureCircuits<unknown>
+  | keyof BountySignedRecordImpureCircuits<unknown>
   | keyof TestTokenImpureCircuits<unknown>;
 
 export type BountyProviders = MidnightProviders<any>;
