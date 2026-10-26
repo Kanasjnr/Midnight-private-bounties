@@ -40,7 +40,20 @@ one warm-up call, which also loads the public parameters for its k, then 3 timed
 | `submitSha` | 14 | 9.40 s | 5.63 s | 4.62 to 6.32 s | 4,860 B |
 
 Measured on an Intel i5 MacBook with Docker Desktop, while the machine was heavily loaded
-(load average 32 to 67 during the run). Expect faster times on a quiet machine.
+(load average 32 to 67 during the run).
+
+**On an idle machine** (the `Spike benchmarks` workflow on a GitHub `ubuntu-latest` runner, run
+40282085397, same keys and versions):
+
+| Circuit | Median | Min to max |
+|---|---|---|
+| `checkOnly` | 0.05 s | 0.05 to 0.05 s |
+| `encryptOnly` | 0.11 s | 0.11 to 0.11 s |
+| `submit4` | **0.41 s** | 0.40 to 0.44 s |
+| `submit8` | 0.41 s | 0.41 to 0.41 s |
+| `submitSha` | 2.61 s | 2.61 to 2.62 s |
+
+The round trip passed there too.
 
 ## Decryption round trip (Q4)
 

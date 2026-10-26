@@ -1,0 +1,173 @@
+name: Spike on devnet
+
+# Runs every spike that has a devnet harness on a local Midnight devnet, with
+# real proofs and transactions, on GitHub runners instead of a laptop.
+#
+# Convention: a spike folder with a `harness/` subfolder (laid out like a
+# midnight-examples example, with its own unique package name) runs here
+# automatically. Adding a spike needs no change to this file. Each test file in
+# `harness/src/test/` gets its own runner and its own devnet, in parallel, inside
+# a checkout of midnight-examples pinned below, the same way that repo's CI runs
+# every example.
+#
+# Runs once per commit on PRs into next-release and main (open a draft PR for
+# early feedback), or by hand.
+
+on:
+  # PRs into next-release and main run every time, with no path filter, so the
+  # summary job below always reports and can be a required status check.
+  pull_request:
+    branches: [next-release, main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: spike-devnet-${{ github.ref }}
+  # A new commit on a PR supersedes the run for the old one.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  EXAMPLES_REF: 3498bd11144a6eb4ee8186fc096f5d785ae55a93
+
+jobs:
+  find:
+    name: Find spike harness tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  #v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: List every test file in every spike harness
+        id: list
+        run: |
+          matrix=$(find spike -path 'spike/*/harness/src/test/*.test.ts' -not -name '*.sim.test.ts' \
+            | sort \
+            | jq -R 'capture("^spike/(?<spike>[^/]+)/harness/(?<test>src/test/(?<name>[^/]+)\\.test\\.ts)$")' \
+            | jq -cs '{include: .}')
+          echo "Found: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  devnet:
+    name: ${{ matrix.spike }} / ${{ matrix.name }} on devnet
+    needs: find
+    if: needs.find.outputs.matrix != '{"include":[]}'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.find.outputs.matrix) }}
+    env:
+      SPIKE: ${{ matrix.spike }}
+      TEST: ${{ matrix.test }}
+      HARNESS: examples-repo/examples/spike-${{ matrix.spike }}
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  #v7.0.1
+        with:
+          path: bounties
+          persist-credentials: false
+
+      - name: Check out midnight-examples
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  #v7.0.1
+        with:
+          repository: midnightntwrk/midnight-examples
+          ref: ${{ env.EXAMPLES_REF }}
+          path: examples-repo
+          persist-credentials: false
+
+      - name: Add the spike harness to the examples workspace
+        run: cp -R "bounties/spike/$SPIKE/harness" "$HARNESS"
+
+      - name: Setup Compact compiler
+        uses: midnightntwrk/setup-compact-action@836895c8fffbbea6bd986af2b17e8941ff29d1f8
+        with:
+          compact-version: '0.31.1'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  #v7.1.0
+        with:
+          node-version-file: examples-repo/.nvmrc
+
+      - name: Enable Corepack (Yarn 4)
+        run: corepack enable
+
+      # The harness is a new workspace, so the lockfile changes. Yarn makes
+      # installs immutable in CI by default, so turn that off here.
+      - name: Install dependencies
+        working-directory: examples-repo
+        env:
+          YARN_ENABLE_IMMUTABLE_INSTALLS: 'false'
+        run: yarn install
+
+      - name: Compile the contract
+        working-directory: ${{ env.HARNESS }}
+        run: yarn compile
+
+      - name: Typecheck the harness
+        working-directory: ${{ env.HARNESS }}
+        run: yarn typecheck
+
+      - name: Start the local Midnight network
+        working-directory: ${{ env.HARNESS }}
+        run: yarn env:up
+
+      - name: Wait for DUST to accrue
+        working-directory: ${{ env.HARNESS }}
+        run: yarn wait:dust
+
+      - name: Run the spike tests
+        working-directory: ${{ env.HARNESS }}
+        run: |
+          set -o pipefail
+          yarn test:local "$TEST" 2>&1 | tee spike-run.log
+
+      - name: Collect service logs on failure
+        if: failure()
+        working-directory: ${{ env.HARNESS }}
+        run: mkdir -p logs && docker compose logs --no-color --timestamps > logs/compose.log 2>&1 || true
+
+      - name: Stop the local Midnight network
+        if: always()
+        working-directory: ${{ env.HARNESS }}
+        run: yarn env:down
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  #v7.0.2
+        with:
+          name: spike-devnet-results-${{ matrix.spike }}-${{ matrix.name }}
+          path: |
+            ${{ env.HARNESS }}/*-results.json
+            ${{ env.HARNESS }}/spike-run.log
+            ${{ env.HARNESS }}/logs/
+          if-no-files-found: warn
+
+  # One stable check name for branch protection. The matrix jobs are named per
+  # spike, so they change as spikes are added; this job fails if any spike failed.
+  result:
+    name: All devnet spikes
+    needs: [find, devnet]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check every spike passed
+        env:
+          FIND: ${{ needs.find.result }}
+          RUNS: ${{ needs.devnet.result }}
+        run: |
+          echo "find=$FIND devnet=$RUNS"
+          [ "$FIND" = success ] && { [ "$RUNS" = success ] || [ "$RUNS" = skipped ]; }

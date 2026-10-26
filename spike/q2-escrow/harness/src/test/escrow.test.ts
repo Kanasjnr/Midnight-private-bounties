@@ -11,15 +11,10 @@
 //       and the solver withdraws the stake.          (Q5, Q7, refund)
 //   B1  happy path: stake, submit, payout, privacy checks.   (Q2, Q7)
 //   B2  submit with a wrong stake opening is rejected, nothing changes.  (Q5)
-//   B4  two solvers submit at once: one wins, the loser leaves no trace and
-//       withdraws the stake.                          (Q5, on chain)
-//   B5  submitOneTx: same-transaction coin merged first.  (Q3)
 //
-// Known issue (see RESULTS.md): B4 runs both solvers' calls in one process, and
-// the level private-state provider uses one on-disk database, so the second
-// call failed on the client with a LevelDB lock error before reaching the
-// chain. B4 therefore did not exercise an on-chain conflict. To test that, run
-// the two solvers in separate processes, or give each its own store directory.
+// B4 (two-step race) and B5 (first one-transaction submit) were removed after
+// onetx.test.ts superseded them with B7 and B6. Their results stay in
+// RESULTS.md.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
@@ -111,8 +106,6 @@ describe(`Spike Q2: bounty escrow (${config.networkId})`, () => {
   const B1 = newId();
   const B2 = newId();
   const B3 = newId();
-  const B4 = newId();
-  const B5 = newId();
   let b3Deadline = 0n;
 
   async function query(): Promise<BountyLedger> {
@@ -373,53 +366,6 @@ describe(`Spike Q2: bounty escrow (${config.networkId})`, () => {
     expect(r.statusStillOpen && r.escrowStillPresent && r.noDelivery && r.stakesUnchanged).toBe(true);
   }, LONG);
 
-  it('B4: two solvers submit at once; one wins, the loser leaves no trace', async () => {
-    await post(B4, BigInt(nowSec() + 3600), 'B4 postBounty');
-    const bobRec = await stake(bob, B4, 'B4 stake (bob)');
-    const charlieRec = await stake(charlie, B4, 'B4 stake (charlie)');
-    const bobBefore = await balance(bob);
-    const charlieBefore = await balance(charlie);
-
-    await usePrivateState(bob, bobRec);
-    await usePrivateState(charlie, charlieRec);
-    const settled = await Promise.allSettled([
-      call(bob, 'B4 submit (bob, race)', 'submit', [B4, 111n]),
-      call(charlie, 'B4 submit (charlie, race)', 'submit', [B4, 222n]),
-    ]);
-    const outcome = settled.map((s, i) => ({
-      who: i === 0 ? 'bob' : 'charlie',
-      status: s.status,
-      error: s.status === 'rejected' ? errText(s.reason) : undefined,
-    }));
-    const l = await query();
-    const r: Record<string, unknown> = {
-      outcome,
-      status: Status[l.bounties.lookup(B4).status],
-      delivery: l.deliveries.member(B4) ? l.deliveries.lookup(B4) : null,
-      deliveriesForB4: l.deliveries.member(B4) ? 1 : 0,
-    };
-    results['b4'] = r;
-
-    const winners = outcome.filter((o) => o.status === 'fulfilled').map((o) => o.who);
-    r['winners'] = winners;
-    await sync(bob);
-    await sync(charlie);
-    r['bobDelta'] = (await balance(bob)) - bobBefore;
-    r['charlieDelta'] = (await balance(charlie)) - charlieBefore;
-    expect(winners.length).toBe(1);
-    expect(l.bounties.lookup(B4).status).toEqual(Status.SOLVED);
-
-    // The loser's stake is still held; they withdraw it now the bounty is closed.
-    const loser = winners[0] === 'bob' ? charlie : bob;
-    const loserRec = winners[0] === 'bob' ? charlieRec : bobRec;
-    const loserBefore = await balance(loser);
-    await usePrivateState(loser, loserRec);
-    await call(loser, `B4 withdrawStake (${loser.name})`, 'withdrawStake', [B4]);
-    const loserAfter = await waitForShieldedBalance(loser.wallet, color, loserBefore + STAKE, { logger });
-    r['loserWithdrewStake'] = loserAfter - loserBefore;
-    expect(loserAfter).toEqual(loserBefore + STAKE);
-  }, LONG);
-
   it('B3: after the deadline, late submit and non-poster refund fail; poster refund and stake withdrawal work', async () => {
     const r = results['b3'] as Record<string, unknown>;
     const waitMs = (Number(b3Deadline) + 30 - nowSec()) * 1000;
@@ -463,30 +409,6 @@ describe(`Spike Q2: bounty escrow (${config.networkId})`, () => {
     await call(bob, 'B3 withdrawStake (bob)', 'withdrawStake', [B3]);
     const bobAfter = await waitForShieldedBalance(bob.wallet, color, bobBefore + STAKE, { logger });
     r['solverWithdrewStake'] = bobAfter - bobBefore;
-  }, LONG);
-
-  it('B5 (Q3): submitOneTx merges a same-transaction coin first', async () => {
-    await post(B5, BigInt(nowSec() + 3600), 'B5 postBounty');
-    const bobBefore = await balance(bob);
-    const fresh = freshCoin(color, STAKE);
-    const r: Record<string, unknown> = {};
-    results['b5'] = r;
-    try {
-      await usePrivateState(bob);
-      await call(bob, 'B5 submitOneTx (bob)', 'submitOneTx', [B5, 5n, fresh]);
-      r['outcome'] = 'succeeded';
-      const bobAfter = await waitForShieldedBalance(bob.wallet, color, bobBefore + REWARD, { logger });
-      r['solverDelta'] = bobAfter - bobBefore;
-      const l = await query();
-      r['status'] = Status[l.bounties.lookup(B5).status];
-    } catch (e) {
-      r['outcome'] = 'failed';
-      r['error'] = errText(e);
-      const l = await query();
-      r['statusAfterFailure'] = Status[l.bounties.lookup(B5).status];
-      r['escrowStillPresent'] = l.escrows.member(B5);
-    }
-    logger.info(`Q3 result: ${JSON.stringify(r, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
   }, LONG);
 
   it('reads entry points per transaction from the indexer', async () => {

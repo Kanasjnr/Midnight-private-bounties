@@ -1,0 +1,130 @@
+// Spike Q11 (and Q9): the cost of the real submit, all in one circuit.
+//
+// Combines Q1's crypto core (checker, Jubjub key exchange, keystream
+// encryption) with Q2's one-transaction escrow (receive the solver's fresh
+// coin, merge it first, pay out). Also checks Q9: a JubjubPoint inside the
+// struct values of ledger maps.
+
+pragma language_version 0.23;
+import CompactStandardLibrary;
+
+export enum Status { OPEN, SOLVED, REFUNDED }
+
+export struct Bounty {
+  poster: Bytes<32>;
+  posterPk: JubjubPoint;
+  target: Field;
+  deadline: Uint<64>;
+  status: Status;
+}
+
+export struct Delivery {
+  ephemeralPk: JubjubPoint;
+  c: Vector<4, Field>;
+}
+
+export ledger bounties: Map<Bytes<32>, Bounty>;
+export ledger escrows: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
+export ledger deliveries: Map<Bytes<32>, Delivery>;
+
+witness localSecretKey(): Bytes<32>;
+witness answer(): Vector<4, Field>;
+witness ephemeralScalar(): Uint<248>;
+
+circuit tokenColor(): Bytes<32> {
+  return tokenType(pad(32, "bounty:test-token"), kernel.self());
+}
+
+circuit pseudonym(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "bounty:pk:"), kernel.self().bytes, sk]);
+}
+
+pure circuit keystream(k: Field, id: Field, i: Field): Field {
+  return transientHash<Vector<3, Field>>([k, id, i]);
+}
+
+pure circuit sharedKey(e: Field, pk: JubjubPoint, id: Field): Field {
+  const s = ecMul(pk, e);
+  return transientHash<Vector<3, Field>>([jubjubPointX(s), jubjubPointY(s), id]);
+}
+
+pure circuit encrypt4(m: Vector<4, Field>, k: Field, id: Field): Vector<4, Field> {
+  return [m[0] + keystream(k, id, 0), m[1] + keystream(k, id, 1),
+          m[2] + keystream(k, id, 2), m[3] + keystream(k, id, 3)];
+}
+
+export pure circuit answerHash(m: Vector<4, Field>): Field {
+  return transientHash<Vector<4, Field>>(m);
+}
+
+// The bounty id as the field element the keystream uses, for off-chain decryption.
+export pure circuit idField(id: Bytes<32>): Field {
+  return degradeToTransient(id);
+}
+
+export pure circuit publicKey(sk: Field): JubjubPoint {
+  return ecMulGenerator(sk);
+}
+
+export pure circuit decrypt4(c: Vector<4, Field>, ephemeral: JubjubPoint, sk: Field, id: Field): Vector<4, Field> {
+  const k = sharedKey(sk, ephemeral, id);
+  return [c[0] - keystream(k, id, 0), c[1] - keystream(k, id, 1),
+          c[2] - keystream(k, id, 2), c[3] - keystream(k, id, 3)];
+}
+
+export circuit postBounty(id: Bytes<32>, coin: ShieldedCoinInfo, posterPk: JubjubPoint,
+                          target: Field, deadline: Uint<64>): [] {
+  const bountyId = disclose(id);
+  assert(!bounties.member(bountyId), "Bounty already exists");
+  assert(disclose(coin.color) == tokenColor(), "Reward must be the test token");
+
+  receiveShielded(disclose(coin));
+  escrows.insertCoin(bountyId, disclose(coin), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  bounties.insert(bountyId, Bounty {
+    poster: disclose(pseudonym(localSecretKey())),
+    posterPk: disclose(posterPk),
+    target: disclose(target),
+    deadline: disclose(deadline),
+    status: Status.OPEN
+  });
+}
+
+// The real submit: one transaction for the solver.
+export circuit submit(id: Bytes<32>, fresh: ShieldedCoinInfo): [] {
+  const bountyId = disclose(id);
+  assert(bounties.member(bountyId), "No such bounty");
+  const b = bounties.lookup(bountyId);
+  assert(b.status == Status.OPEN, "Bounty is closed");
+  assert(blockTimeLt(b.deadline), "Deadline has passed");
+
+  // Checker.
+  const m = answer();
+  assert(transientHash<Vector<4, Field>>(m) == b.target, "Wrong answer");
+
+  // Key exchange and verifiable encryption to the poster.
+  const idField = degradeToTransient(bountyId);
+  const e = ephemeralScalar() as Field;
+  const c = encrypt4(m, sharedKey(e, b.posterPk, idField), idField);
+  deliveries.insert(bountyId, Delivery {
+    ephemeralPk: disclose(ecMulGenerator(e)),
+    c: disclose(c)
+  });
+
+  // Escrow: the solver's fresh coin goes in first, so the payout is unlinkable.
+  assert(disclose(fresh.color) == tokenColor(), "Coin must be the test token");
+  receiveShielded(disclose(fresh));
+  const first = QualifiedShieldedCoinInfo {
+    nonce: fresh.nonce, color: fresh.color, value: fresh.value, mt_index: 0 as Uint<64>
+  };
+  const merged = mergeCoin(disclose(first), escrows.lookup(bountyId));
+  sendShielded(
+    QualifiedShieldedCoinInfo { nonce: merged.nonce, color: merged.color, value: merged.value, mt_index: 0 as Uint<64> },
+    left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey()),
+    merged.value
+  );
+
+  bounties.insert(bountyId, Bounty {
+    poster: b.poster, posterPk: b.posterPk, target: b.target, deadline: b.deadline, status: Status.SOLVED
+  });
+  escrows.remove(bountyId);
+}

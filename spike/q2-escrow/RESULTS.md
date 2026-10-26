@@ -9,8 +9,9 @@ real transactions: 8 of 8 tests passed in 1,359 s.
 - Devnet from `examples/shielded-chips/compose.yml`: `midnight-node:1.0.0`,
   `indexer-standalone:4.3.3`, `proof-server:8.1.0`.
 - midnight-js 4.1.1 and wallet SDK 1.2.0, with the harness from a midnight-examples checkout
-  (`example-fast-sync` wallets, `example-coins` helpers). The test files here run inside such a
-  checkout as `examples/bounty-escrow-spike`.
+  (`example-fast-sync` wallets, `example-coins` helpers). The `harness/` folder here is that
+  example; it runs inside such a checkout as `examples/bounty-escrow-spike`, locally or through
+  the `Spike on devnet` GitHub workflow.
 - Three local genesis wallets: Alice (poster), Bob (solver), Charlie (second solver and
   non-poster). A test token is minted by the contract itself.
 - Every coin a circuit receives is `freshCoin(...)`, with a random nonce the wallet pays for.
@@ -79,7 +80,9 @@ balancing and inclusion, measured on a heavily loaded Intel i5 MacBook.
 one on-disk database. Bob's call failed on the client with `IO error: lock
 midnight-level-db/LOCK: already held by process` before it was proved or submitted. Charlie's call
 went through. So B4 confirms the winner path and the loser's stake withdrawal, but **not** how the
-chain handles two conflicting submits. That needs two processes, or separate store directories.
+chain handles two conflicting submits. The harness now gives each party its own store directory
+(`midnightDbName` in `src/providers.ts`), and the race is rerun with the one-transaction submit as
+B7 in `src/test/onetx.test.ts`.
 
 ## Verdicts
 
@@ -127,3 +130,38 @@ A conflict that only shows up on chain, two valid submits racing, wasn't exercis
 
 Local devnet only, on a loaded laptop. Times will differ on other machines and networks. B4 needs
 a rerun with two processes to cover on-chain conflicts.
+
+## Follow-up: Q3b and Q5 on GitHub (`onetx.test.ts`)
+
+Run by the `Spike on devnet` workflow on a GitHub `ubuntu-latest` runner (run 40282319696, commit
+`58d0874`), with the same images and versions as above. Both files passed: 10 of 10 tests in
+1,122 s. Each party now has its own private-state store, so concurrent calls no longer collide.
+
+| Bounty | Check | Result | Observed |
+|---|---|---|---|
+| B6 | One-transaction submit pays the solver | pass | +100 net (reward plus their own coin back), status SOLVED |
+| B6 | Solver's fresh coin nonce absent from public state | pass | not found |
+| B6 | Payout nonce absent, and different from the escrow and fresh nonces | pass | not found; different from both |
+| B6 | Solver and poster wallet coin keys, and solver's secret, absent | pass | not found |
+| B7 | Two solvers call the one-transaction submit at once | pass | Bob's landed; Charlie's was rejected by the node |
+| B7 | The losing solver keeps their coin | pass | Charlie's balance changed by 0 |
+| B7 | Winner paid once, one delivery | pass | Bob +100 net, delivery 71, escrow removed |
+
+After a successful submit the escrow entry is removed, so B6's leak check covered fewer byte
+fields (3) than B1's (10). What protects the payout is that its nonce derives from the solver's
+fresh coin, which never appears on chain.
+
+The losing transaction failed at submission with `1010: Invalid Transaction: Custom error: 103`,
+which is `TransactionInvalid(Zswap)`: the node rejected its coin spends. Both transactions spend
+the same escrow coin, so once the first lands, the second is invalid as a whole and nothing of it
+applies. That is our reading of the error; the node doesn't say which spend failed.
+
+**Q3b: pass.** The one-transaction payout is as private as the two-step one.
+
+Since this run, `escrow.test.ts` no longer includes B4 and B5: B7 and B6 supersede them. Their
+results above stay as the record.
+
+**Q5: answered.** Two valid submits racing on chain: exactly one wins, and the loser's transaction
+is rejected whole, so their coin stays in their wallet. Together with the client-side rejections
+above, a failing submit leaves no partial state.
+

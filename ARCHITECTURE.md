@@ -1,7 +1,7 @@
 # Private Bounties on Midnight: Architecture
 
-**Status:** draft v0.2, 2026-10-24. Updated with the week-1 spike results so far (Q1 to Q4 and Q7
-answered, Q5 partly; see section 18). Anything still marked 🔬 is unproven. Code blocks
+**Status:** draft v0.4, 2026-10-26. Updated with the week-1 spike results so far (Q1 to Q5, Q3b,
+Q7, Q9 and Q11 answered; see section 18). Anything still marked 🔬 is unproven. Code blocks
 are **pseudocode, not Compact**. Midnight-specific facts were checked against the Compact
 standard library at `compactc-v0.31.1` and against
 [midnight-examples](https://github.com/midnightntwrk/midnight-examples) at `cb250c9`.
@@ -154,21 +154,25 @@ TypeScript compute exactly what the circuit computes.
 
 The first draft had a separate `stake` circuit, plus `withdrawStake` for a solver who lost a race.
 Q3 showed a coin received in the same transaction can be merged first, so `submit` does it all in
-one go. The two-step version stays as a fallback, in case the one-transaction payout fails its
-privacy check (Q3b).
+one go. The one-transaction payout passed the same privacy checks as the two-step one (Q3b), so
+the two-step version is no longer needed.
 
 ### Measured cost
 
 | Part | k | Proving or transaction time | Source |
 |---|---|---|---|
-| Checker + key exchange + encryption (4 or 8 elements) | 11 | about 1.9 s to 2.7 s to prove | [Q1](spike/q1-proof-size/RESULTS.md) |
-| Same core with a SHA-256 checker | 14 | about 5.6 s to prove | [Q1](spike/q1-proof-size/RESULTS.md) |
+| Checker + key exchange + encryption (4 or 8 elements) | 11 | 0.4 s to prove (idle runner); 1.9 to 2.7 s (loaded laptop) | [Q1](spike/q1-proof-size/RESULTS.md) |
+| Same core with a SHA-256 checker | 14 | 2.6 s (idle runner); 5.6 s (loaded laptop) | [Q1](spike/q1-proof-size/RESULTS.md) |
 | Escrow `submit` (merge + payout) | 16 | about 100 s to 134 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | `postBounty`, `refund` | 15 | about 40 s to 67 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
+| **Full `submit`**: checker + key exchange + encryption + escrow | **16** | **about 11 s to prove (idle runner)**; 43 s (loaded laptop) | [Q11](spike/q11-full-submit/RESULTS.md) |
 
 **Coin handling, not cryptography, sets the cost.** Every coin operation hashes commitments and
-nullifiers with SHA-256 inside the standard library. A full `submit` (checker, key exchange,
-encryption and escrow) will be at least k = 16 (Q11). Times were measured on a heavily loaded
+nullifiers with SHA-256 inside the standard library. The full `submit` (checker, key exchange,
+encryption and escrow) is k = 16, the same as the escrow alone, so the cryptography is almost free
+on top of it (Q11). The UI shows proving progress; expect around 11 s on an ordinary 4-core
+machine, longer on a busy laptop. "Idle runner" times come from the `Spike benchmarks` workflow on
+a GitHub `ubuntu-latest` runner; the others were measured on a heavily loaded
 Intel i5 laptop, and "end to end" includes proving, wallet balancing and landing on chain.
 
 ## 8. Cryptography
@@ -237,8 +241,12 @@ transaction, and the solver gets the reward plus their coin back in one payout.
 **Q2, verified on a local devnet** with the two-step version: the escrow coin is public as
 designed, while the solver's coin nonce, the payout nonce, both wallets' coin keys and the solver's
 secret never appear in public state, and the payout nonce differs from the escrow nonce
-([results](spike/q2-escrow/RESULTS.md)). 🔬 **Q3b:** the same leak check still has to run on the
+([results](spike/q2-escrow/RESULTS.md)). **Q3b, verified:** the same checks pass for the
 one-transaction payout.
+
+**Racing solvers (Q5, verified):** two solvers submitting at once both spend the same escrow coin.
+The first transaction lands; the node rejects the second as a whole (`TransactionInvalid(Zswap)`),
+so the losing solver's coin never leaves their wallet. The escrow coin works as the lock.
 
 **Refunds:** the poster's refund comes from the public escrow coin, so it is linkable to the
 poster's wallet **by someone who already suspects that wallet**. v1 documents this, and the same
@@ -297,7 +305,7 @@ flowchart TD
 | Post a bounty | Form, then a `postBounty` transaction | DApp Connector, proof server |
 | "What goes public" review | Static, per template | Selective disclosure, made visible |
 | Bounty detail | Ledger state | Public params, deadline countdown from block time |
-| Solve | Pure checker, then one `submit` | Local proving, witnesses, shielded coins |
+| Solve | Pure checker, then one `submit`, with proving progress shown (about 11 s on an ordinary machine) | Local proving, witnesses, shielded coins |
 | My bounties / inbox | Ledger state and private state | Private state store, pure-circuit decryption |
 | Refund | `refund` transaction | Block time |
 
@@ -482,7 +490,7 @@ flowchart LR
 | Price (private offer, v2) | Buyer and seller only 🔬 Q2 |
 | Poster identity | Per-bounty pseudonym. The wallet isn't linked |
 | Solver identity | Per-bounty pseudonym |
-| Payout destination | Shielded coin, unlinkable because the solver's coin is merged first (section 9). Verified for the two-step version; one-transaction 🔬 Q3b |
+| Payout destination | Shielded coin, unlinkable because the solver's coin is merged first (section 9). Verified on a local devnet for both versions |
 | Refund destination | Linkable only by someone who already suspects the poster's wallet (v1 limit) |
 | Poster key `b`, solver scalar `e` | Private state, and `e` is discarded after proving |
 | Fees | Paid in DUST |
@@ -497,7 +505,7 @@ flowchart LR
 | Poster refuses to pay | Can't: payout and delivery are one transaction |
 | Poster refunds early | `refund` requires `blockTimeGte(deadline)` |
 | Solver submits late | `submit` requires `blockTimeLt(deadline)` |
-| Two solvers race | The first to land wins. The other's transaction fails at the status check, so their coin never leaves their wallet. 🔬 Not yet tested on chain (Q5) |
+| Two solvers race | The first to land wins. Both spend the same escrow coin, so the node rejects the other transaction whole and the losing solver's coin never leaves their wallet (verified, Q5) |
 | Copying a pending submission | Nothing to copy: the answer is encrypted and the payout is bound in the proof |
 | Payout traced to the solver's wallet | Solver's fresh coin merged first (section 9) |
 | Escrow traced to the poster's wallet | The app always builds the escrow as a fresh coin with a random nonce, never a wallet coin's nonce |
@@ -538,18 +546,18 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 
 | # | Question | Status | Result |
 |---|---|---|---|
-| Q1 | Is `submit` provable in reasonable time and size? | ✅ Answered | Crypto core k = 11, proves in about 2 s; SHA-256 checker k = 14. [Results](spike/q1-proof-size/RESULTS.md) |
+| Q1 | Is `submit` provable in reasonable time and size? | ✅ Answered | Crypto core k = 11, proves in 0.4 s on an idle runner; SHA-256 checker k = 14. [Results](spike/q1-proof-size/RESULTS.md) |
 | Q2 | What exactly is public after `postBounty`, `submit`, `refund`? | ✅ Answered | Escrow coin public as designed; solver's coin, payout nonce and wallet keys never public; action names public. [Results](spike/q2-escrow/RESULTS.md) |
 | Q3 | Can a coin received in the same transaction be the **first** merge input? | ✅ Works | One-transaction `submit` paid out on a local devnet, no effects-budget error. [Results](spike/q2-escrow/RESULTS.md) |
-| Q3b | Does the one-transaction payout pass the same leak check as Q2? | 🔬 Open | Run Q2's privacy checks on `submitOneTx` |
+| Q3b | Does the one-transaction payout pass the same leak check as Q2? | ✅ Answered | Yes: solver's coin, payout nonce, wallet keys and secret never public. [Results](spike/q2-escrow/RESULTS.md) |
 | Q4 | Do pure circuits off-chain reproduce the circuit's `ecMul` and `transientHash`? | ✅ Answered | Poster decrypts exactly; a wrong key doesn't (JS runtime). [Results](spike/q1-proof-size/RESULTS.md) |
-| Q5 | Does a failing `submit` leave no partial state? | Partly | Bad calls are rejected before proving and change nothing. Two valid submits racing on chain: not yet tested |
+| Q5 | Does a failing `submit` leave no partial state? | ✅ Answered | Bad calls are rejected before proving. Racing submits: one wins, the other is rejected whole and the loser keeps their coin. [Results](spike/q2-escrow/RESULTS.md) |
 | Q6 | Can the wallet (Lace, 1AM) balance a transaction that pays in and receives a payout? | 🔬 Open | Run `submit` through the DApp Connector |
 | Q7 | Block time units and drift | ✅ Answered | Unix seconds; deadline checks enforced on chain. [Results](spike/q2-escrow/RESULTS.md) |
 | Q8 | Persistent, encrypted browser private state | 🔬 Open | Prototype a store that survives a reload |
-| Q9 | `JubjubPoint` and vectors inside ledger map values | Partly | Work as top-level ledger fields (Q1 spike). Inside a map value struct: not yet tested |
+| Q9 | `JubjubPoint` and vectors inside ledger map values | ✅ Answered | Stored in `Bounty` and `Delivery` structs, read back and decrypted in the runtime. [Results](spike/q11-full-submit/RESULTS.md) |
 | Q10 | Which prover may a user's wallet use? | 🔬 Open | Some wallets (1AM) can prove on a hosted service, which would send the answer off the device. Decide what the app requires and whether to warn |
-| Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | 🔬 Open | Expected k ≥ 16; measure k and time |
+| Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 11 s to prove on an idle runner; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 

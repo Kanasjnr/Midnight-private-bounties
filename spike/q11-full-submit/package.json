@@ -1,0 +1,9 @@
+{
+  "name": "q11-full-submit-bench",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/ledger-v8": "8.1.3"
+  }
+}
