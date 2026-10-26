@@ -54,6 +54,8 @@ const config = getConfig();
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
+// D4, D1, D2 and D3 each escrow one reward, and D2's and D4's stay locked until the end.
+const BOUNTIES = 4n;
 
 const nowSec = (): number => Math.floor(Date.now() / 1000);
 const newId = (): Uint8Array => new Uint8Array(randomBytes(32));
@@ -169,7 +171,7 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
     logger.info(`token ${tokenAddress}, bounty contract ${address}`);
 
     const keys = encryptionKeys(alice.wallet, bob.wallet, charlie.wallet);
-    for (const [to, amount] of [[alice, 3n * REWARD], [bob, 3n * STAKE], [charlie, 3n * STAKE]] as const) {
+    for (const [to, amount] of [[alice, (BOUNTIES + 1n) * REWARD], [bob, 3n * STAKE], [charlie, 3n * STAKE]] as const) {
       await (submitCallTx as any)(tokenProv, {
         compiledContract: CompiledTestTokenContract,
         contractAddress: tokenAddress,
@@ -179,7 +181,7 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
       });
       await syncWallet(logger, alice.wallet.wallet, 600_000);
     }
-    await waitForShieldedBalance(alice.wallet, color, 3n * REWARD, { logger });
+    await waitForShieldedBalance(alice.wallet, color, (BOUNTIES + 1n) * REWARD, { logger });
     await waitForShieldedBalance(bob.wallet, color, 3n * STAKE, { logger });
     await waitForShieldedBalance(charlie.wallet, color, 3n * STAKE, { logger });
   }, LONG);
