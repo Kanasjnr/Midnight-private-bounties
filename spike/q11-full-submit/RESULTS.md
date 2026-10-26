@@ -32,8 +32,10 @@ numbers.
 
 **On an idle machine** (the `Spike benchmarks` workflow on a GitHub `ubuntu-latest` runner, run
 40282085397, same keys and versions): `postBounty` median **5.8 s** (5.5 to 5.9 s), `submit` median
-**10.9 s** (10.9 to 11.0 s). The full compile with keys took 46 s there, and the Q9 checks passed. This is proving time only. On a network, Q2 measured
-about 100 to 134 s end to end for `submit`, which also covers wallet balancing and inclusion.
+**10.9 s** (10.9 to 11.0 s). The full compile with keys took 46 s there, and the Q9 checks passed.
+
+All of this is proving time only. On a network, Q2 measured about 100 to 134 s end to end for
+`submit` on the loaded laptop, which also covers wallet balancing and inclusion.
 
 ## Q9: JubjubPoint inside map values
 
