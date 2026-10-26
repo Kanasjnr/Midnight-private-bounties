@@ -1,0 +1,152 @@
+// Private Bounties: the factoring template.
+//
+// A poster escrows a shielded reward and asks for two factors p, q > 1 of a
+// number N. A solver proves their factors multiply to N, and in the same
+// transaction the factors are stored encrypted to the poster's key and the
+// reward is paid to the solver. Only the poster can decrypt. After the
+// deadline, an unsolved bounty's reward goes back to the poster.
+//
+// The answer is [p, q, unused, unused], smaller factor first. N is stored in the bounty's `target`
+// field, so this file differs from bounty_preimage.compact only in its
+// checker and off-chain helpers.
+//
+// See ARCHITECTURE.md. Each template contract hosts many bounties; the shared
+// logic lives in the modules imported below.
+
+pragma language_version 0.23;
+import CompactStandardLibrary;
+import "escrow" prefix Escrow_;
+import "deadline" prefix Deadline_;
+import "pseudonym" prefix Pseudonym_;
+import "ecdh" prefix Ecdh_;
+import "stream_cipher" prefix Cipher_;
+
+export enum Status { OPEN, SOLVED, REFUNDED }
+
+export struct Bounty {
+  poster: Bytes<32>;        // per-bounty pseudonym, not the wallet
+  posterPk: JubjubPoint;    // the poster's encryption key, b·G
+  target: Field;            // N, the number to factor (4 to 2^128 - 1)
+  deadline: Uint<64>;       // block time, seconds since the Unix epoch
+  status: Status;
+}
+
+export struct Delivery {
+  ephemeralPk: JubjubPoint; // e·G, for the poster's side of the key exchange
+  c: Vector<4, Field>;      // the answer, encrypted to the poster
+}
+
+// The token rewards are paid in. Set once, at deploy time.
+export sealed ledger rewardColor: Bytes<32>;
+export ledger bounties: Map<Bytes<32>, Bounty>;
+// Open bounty: the reward coin is public, because whoever solves it has to be
+// able to spend it. It is a fresh coin, so its nonce points at nobody.
+export ledger escrows: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
+export ledger deliveries: Map<Bytes<32>, Delivery>;
+
+// The poster's identity secret. Separate from the encryption key `b`, which
+// never enters a circuit.
+witness localSecretKey(): Bytes<32>;
+// The solver's answer: [p, q, unused, unused].
+witness answer(): Vector<4, Field>;
+// Fresh for every submission. 248 bits keeps it below the Jubjub order.
+witness ephemeralScalar(): Uint<248>;
+
+constructor(color: Bytes<32>) {
+  rewardColor = disclose(color);
+}
+
+// The checker for this template. The casts range-check p to 64 bits and q
+// to 128, so p * q is below 2^192 and can't wrap around the field: only true
+// integer factors of N pass. Every N below 2^128 has its smaller factor below
+// 2^64, so give the smaller factor first. Both must be above 1, which rules
+// out 1 * N.
+pure circuit passes(m: Vector<4, Field>, target: Field): Boolean {
+  const p = m[0] as Uint<64>;
+  const q = m[1] as Uint<128>;
+  return p > 1 && q > 1 && (p * q) as Field == target;
+}
+
+// ---- Off-chain helpers: the UI calls these so it uses the circuit's math. ----
+
+export pure circuit checkAnswer(m: Vector<4, Field>, target: Field): Boolean {
+  return passes(m, target);
+}
+
+export pure circuit posterPublicKey(b: Field): JubjubPoint {
+  return Ecdh_publicKey(b);
+}
+
+// The poster's side of the key exchange, then decryption.
+export pure circuit decrypt(d: Delivery, b: Field, id: Bytes<32>): Vector<4, Field> {
+  const context = degradeToTransient(id);
+  return Cipher_decrypt4(d.c, Ecdh_sharedKey(b, d.ephemeralPk, context), context);
+}
+
+// ---- Circuits ----
+
+export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: JubjubPoint,
+                          target: Field, deadline: Uint<64>): [] {
+  const bountyId = disclose(id);
+  assert(!bounties.member(bountyId), "Bounty already exists");
+  Deadline_assertOpen(disclose(deadline));
+  Ecdh_assertValidPublicKey(disclose(posterPk));
+  // N must fit the checker's bounds: the cast range-checks it to 128 bits.
+  assert(disclose(target) as Uint<128> >= 4, "N must be at least 4");
+
+  Escrow_receiveFresh(reward, rewardColor);
+  escrows.insertCoin(bountyId, disclose(reward), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  bounties.insert(bountyId, Bounty {
+    poster: disclose(Pseudonym_derive(pad(32, "bounty:poster"), bountyId, localSecretKey())),
+    posterPk: disclose(posterPk),
+    target: disclose(target),
+    deadline: disclose(deadline),
+    status: Status.OPEN
+  });
+}
+
+// One transaction for the solver: the checker, the encrypted delivery and the
+// payout. `stake` is a fresh coin of the solver's own; it is merged first, so
+// the payout (reward plus the stake back) can't be linked to the solver.
+export circuit submit(id: Bytes<32>, stake: ShieldedCoinInfo): [] {
+  const bountyId = disclose(id);
+  assert(bounties.member(bountyId), "No such bounty");
+  const b = bounties.lookup(bountyId);
+  assert(b.status == Status.OPEN, "Bounty is closed");
+  Deadline_assertOpen(b.deadline);
+
+  const m = answer();
+  assert(passes(m, b.target), "Wrong answer");
+
+  const context = degradeToTransient(bountyId);
+  const e = ephemeralScalar() as Field;
+  deliveries.insert(bountyId, Delivery {
+    ephemeralPk: disclose(Ecdh_publicKey(e)),
+    c: disclose(Cipher_encrypt4(m, Ecdh_sharedKey(e, b.posterPk, context), context))
+  });
+
+  const first = Escrow_receiveFresh(stake, rewardColor);
+  Escrow_payMerged(first, escrows.lookup(bountyId), ownPublicKey());
+
+  bounties.insert(bountyId, Bounty {
+    poster: b.poster, posterPk: b.posterPk, target: b.target, deadline: b.deadline, status: Status.SOLVED
+  });
+  escrows.remove(bountyId);
+}
+
+// After the deadline, the poster takes back the reward of an unsolved bounty.
+export circuit refund(id: Bytes<32>): [] {
+  const bountyId = disclose(id);
+  assert(bounties.member(bountyId), "No such bounty");
+  const b = bounties.lookup(bountyId);
+  assert(b.status == Status.OPEN, "Bounty is closed");
+  assert(b.poster == disclose(Pseudonym_derive(pad(32, "bounty:poster"), bountyId, localSecretKey())),
+         "Only the poster can refund");
+  Deadline_assertExpired(b.deadline);
+
+  Escrow_payOut(escrows.lookup(bountyId), ownPublicKey());
+  bounties.insert(bountyId, Bounty {
+    poster: b.poster, posterPk: b.posterPk, target: b.target, deadline: b.deadline, status: Status.REFUNDED
+  });
+  escrows.remove(bountyId);
+}

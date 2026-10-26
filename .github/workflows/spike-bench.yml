@@ -40,9 +40,31 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Skip when a PR into next-release doesn't touch the spikes
+        id: changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          # PRs into main always run, so the required checks always report.
+          if [ "$EVENT" = pull_request ] && [ "$BASE" = next-release ]; then
+            git fetch -q --depth=1 origin "$BASE"
+            if git diff --name-only FETCH_HEAD HEAD | grep -qE '^(spike/|\.github/workflows/spike-)'; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "No spike changes in this PR; skipping."
+              echo "run=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: List spike folders that have a benchmark
         id: list
+        env:
+          RUN: ${{ steps.changed.outputs.run }}
         run: |
+          if [ "$RUN" != true ]; then echo 'spikes=[]' >> "$GITHUB_OUTPUT"; exit 0; fi
           spikes=$(find spike -mindepth 2 -maxdepth 2 -type f -name bench.mjs \
             | sed 's|^spike/||; s|/bench.mjs$||' | sort | jq -R . | jq -cs .)
           echo "Found: $spikes"

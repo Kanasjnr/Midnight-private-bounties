@@ -1,0 +1,162 @@
+// Private Bounties: the signed-record template.
+//
+// A poster escrows a shielded reward and asks for a record of a given type,
+// signed by a given issuer, whose chosen field is at least a threshold: "a statement from this
+// bank showing income of at least X", say. A solver proves they hold such a
+// record, and in the same transaction the record is stored encrypted to the
+// poster's key and the reward is paid to the solver. Only the poster can
+// decrypt. After the deadline, an unsolved bounty's reward goes back to the
+// poster.
+//
+// The signature is a Schnorr signature on Jubjub over the record's four field
+// elements, verified in-circuit with zk-loan's schnorr module. record[0] is a
+// schema tag the issuer sets for each kind of record, and each bounty pins
+// the tag it wants, so a signature the issuer made for another purpose (a
+// zk-loan attestation, say) can't be passed off as a record. The escrow,
+// deadline and refund logic is the same as bounty_preimage.compact's.
+
+pragma language_version 0.23;
+import CompactStandardLibrary;
+import "escrow" prefix Escrow_;
+import "deadline" prefix Deadline_;
+import "pseudonym" prefix Pseudonym_;
+import "ecdh" prefix Ecdh_;
+import "stream_cipher" prefix Cipher_;
+import "schnorr" prefix Schnorr_;
+
+export enum Status { OPEN, SOLVED, REFUNDED }
+
+export struct Bounty {
+  poster: Bytes<32>;        // per-bounty pseudonym, not the wallet
+  posterPk: JubjubPoint;    // the poster's encryption key, b·G
+  issuerPk: JubjubPoint;    // the record must carry this issuer's signature
+  schema: Field;            // the record type: record[0] must equal this
+  field: Uint<8>;           // which of record[1..3] is checked
+  threshold: Uint<64>;      // that field must be at least this
+  deadline: Uint<64>;       // block time, seconds since the Unix epoch
+  status: Status;
+}
+
+export struct Delivery {
+  ephemeralPk: JubjubPoint; // e·G, for the poster's side of the key exchange
+  c: Vector<4, Field>;      // the record, encrypted to the poster
+}
+
+// The token rewards are paid in. Set once, at deploy time.
+export sealed ledger rewardColor: Bytes<32>;
+export ledger bounties: Map<Bytes<32>, Bounty>;
+export ledger escrows: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
+export ledger deliveries: Map<Bytes<32>, Delivery>;
+
+witness localSecretKey(): Bytes<32>;
+// The solver's record: [schema tag, three fields].
+witness answer(): Vector<4, Field>;
+// The issuer's signature over the record.
+witness signature(): Schnorr_SchnorrSignature;
+witness ephemeralScalar(): Uint<248>;
+
+constructor(color: Bytes<32>) {
+  rewardColor = disclose(color);
+}
+
+pure circuit pick(record: Vector<4, Field>, field: Uint<8>): Field {
+  return field == 0 ? record[0] : field == 1 ? record[1] : field == 2 ? record[2] : record[3];
+}
+
+// ---- Off-chain helpers: the UI calls these so it uses the circuit's math. ----
+
+// The public key for a secret scalar: the poster's encryption key, or an
+// issuer's signing key.
+export pure circuit publicKey(sk: Field): JubjubPoint {
+  return Ecdh_publicKey(sk);
+}
+
+// The Schnorr challenge an issuer signs, before reduction to 248 bits.
+export pure circuit recordChallenge(annX: Field, annY: Field, pkX: Field, pkY: Field,
+                                    record: Vector<4, Field>): Field {
+  return Schnorr_schnorrChallenge(annX, annY, pkX, pkY, record);
+}
+
+// The threshold half of the checker. The signature half needs the circuit.
+export pure circuit meetsThreshold(record: Vector<4, Field>, field: Uint<8>, threshold: Uint<64>): Boolean {
+  return pick(record, field) as Uint<64> >= threshold;
+}
+
+export pure circuit decrypt(d: Delivery, b: Field, id: Bytes<32>): Vector<4, Field> {
+  const context = degradeToTransient(id);
+  return Cipher_decrypt4(d.c, Ecdh_sharedKey(b, d.ephemeralPk, context), context);
+}
+
+// ---- Circuits ----
+
+export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: JubjubPoint,
+                          issuerPk: JubjubPoint, schema: Field, field: Uint<8>,
+                          threshold: Uint<64>, deadline: Uint<64>): [] {
+  const bountyId = disclose(id);
+  assert(!bounties.member(bountyId), "Bounty already exists");
+  assert(disclose(field) >= 1 && disclose(field) <= 3, "Field must be 1 to 3");
+  Deadline_assertOpen(disclose(deadline));
+  Ecdh_assertValidPublicKey(disclose(posterPk));
+  Ecdh_assertValidPublicKey(disclose(issuerPk));
+
+  Escrow_receiveFresh(reward, rewardColor);
+  escrows.insertCoin(bountyId, disclose(reward), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  bounties.insert(bountyId, Bounty {
+    poster: disclose(Pseudonym_derive(pad(32, "bounty:poster"), bountyId, localSecretKey())),
+    posterPk: disclose(posterPk),
+    issuerPk: disclose(issuerPk),
+    schema: disclose(schema),
+    field: disclose(field),
+    threshold: disclose(threshold),
+    deadline: disclose(deadline),
+    status: Status.OPEN
+  });
+}
+
+export circuit submit(id: Bytes<32>, stake: ShieldedCoinInfo): [] {
+  const bountyId = disclose(id);
+  assert(bounties.member(bountyId), "No such bounty");
+  const b = bounties.lookup(bountyId);
+  assert(b.status == Status.OPEN, "Bounty is closed");
+  Deadline_assertOpen(b.deadline);
+
+  // The checker: a record of the right type, signed by the issuer, whose
+  // chosen field passes.
+  const record = answer();
+  assert(record[0] == b.schema, "Wrong record type");
+  Schnorr_schnorrVerify<4>(record, signature(), b.issuerPk);
+  assert(pick(record, b.field) as Uint<64> >= b.threshold, "Wrong answer");
+
+  const context = degradeToTransient(bountyId);
+  const e = ephemeralScalar() as Field;
+  deliveries.insert(bountyId, Delivery {
+    ephemeralPk: disclose(Ecdh_publicKey(e)),
+    c: disclose(Cipher_encrypt4(record, Ecdh_sharedKey(e, b.posterPk, context), context))
+  });
+
+  const first = Escrow_receiveFresh(stake, rewardColor);
+  Escrow_payMerged(first, escrows.lookup(bountyId), ownPublicKey());
+
+  bounties.insert(bountyId, Bounty {
+    poster: b.poster, posterPk: b.posterPk, issuerPk: b.issuerPk, schema: b.schema, field: b.field,
+    threshold: b.threshold, deadline: b.deadline, status: Status.SOLVED
+  });
+  escrows.remove(bountyId);
+}
+
+export circuit refund(id: Bytes<32>): [] {
+  const bountyId = disclose(id);
+  assert(bounties.member(bountyId), "No such bounty");
+  const b = bounties.lookup(bountyId);
+  assert(b.status == Status.OPEN, "Bounty is closed");
+  assert(b.poster == disclose(Pseudonym_derive(pad(32, "bounty:poster"), bountyId, localSecretKey())),
+         "Only the poster can refund");
+  Deadline_assertExpired(b.deadline);
+
+  Escrow_payOut(escrows.lookup(bountyId), ownPublicKey());
+  bounties.insert(bountyId, Bounty {
+    poster: b.poster, posterPk: b.posterPk, issuerPk: b.issuerPk, schema: b.schema, field: b.field,
+    threshold: b.threshold, deadline: b.deadline, status: Status.REFUNDED
+  });
+  escrows.remove(bountyId);
+}

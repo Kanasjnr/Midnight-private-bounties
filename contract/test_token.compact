@@ -1,0 +1,16 @@
+// Test reward token for Private Bounties, for local networks and testnets.
+// Anyone can mint it: it carries no value. The bounty contracts only check a
+// coin's color, so no cross-contract call is needed.
+
+pragma language_version 0.23;
+import CompactStandardLibrary;
+
+export circuit mint(amount: Uint<64>, nonce: Bytes<32>, recipient: ZswapCoinPublicKey): [] {
+  mintShieldedToken(pad(32, "bounty:test-token"), disclose(amount), disclose(nonce),
+                    left<ZswapCoinPublicKey, ContractAddress>(disclose(recipient)));
+}
+
+// The token's color, to pass to a bounty contract's constructor.
+export circuit color(): Bytes<32> {
+  return tokenType(pad(32, "bounty:test-token"), kernel.self());
+}
