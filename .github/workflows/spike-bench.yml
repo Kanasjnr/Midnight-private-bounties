@@ -1,0 +1,139 @@
+name: Spike benchmarks
+
+# Runs every spike benchmark (circuit size and proving time) on a GitHub runner,
+# against a local proof server. No devnet needed.
+#
+# Convention: a spike folder with a `bench.mjs`, a `package.json` with a
+# lockfile, and one `.compact` contract runs here automatically. The contract
+# compiles into `managed/`, which is where the benchmark reads its keys. Adding a
+# spike needs no change to this file.
+#
+# Runs once per commit on PRs into next-release and main (open a draft PR for
+# early feedback), or by hand.
+
+on:
+  # PRs into next-release and main run every time, with no path filter, so the
+  # summary job below always reports and can be a required status check.
+  pull_request:
+    branches: [next-release, main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: spike-bench-${{ github.ref }}
+  # A new commit on a PR supersedes the run for the old one.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  find:
+    name: Find spike benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      spikes: ${{ steps.list.outputs.spikes }}
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  #v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: List spike folders that have a benchmark
+        id: list
+        run: |
+          spikes=$(find spike -mindepth 2 -maxdepth 2 -type f -name bench.mjs \
+            | sed 's|^spike/||; s|/bench.mjs$||' | sort | jq -R . | jq -cs .)
+          echo "Found: $spikes"
+          echo "spikes=$spikes" >> "$GITHUB_OUTPUT"
+
+  bench:
+    name: ${{ matrix.spike }} benchmark
+    needs: find
+    if: needs.find.outputs.spikes != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        spike: ${{ fromJSON(needs.find.outputs.spikes) }}
+    defaults:
+      run:
+        working-directory: spike/${{ matrix.spike }}
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  #v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Compact compiler
+        uses: midnightntwrk/setup-compact-action@836895c8fffbbea6bd986af2b17e8941ff29d1f8
+        with:
+          compact-version: '0.31.1'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  #v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Start the proof server
+        run: |
+          docker run -d --name proof-server -p 127.0.0.1:6300:6300 \
+            midnightntwrk/proof-server:8.1.0 midnight-proof-server -v
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:6300/health && exit 0
+            sleep 2
+          done
+          echo "Proof server did not become healthy" && docker logs proof-server && exit 1
+
+      - name: Compile the contract with proving keys
+        run: |
+          contracts=(*.compact)
+          if [ "${#contracts[@]}" -ne 1 ]; then
+            echo "Expected exactly one .compact file, found ${#contracts[@]}"
+            exit 1
+          fi
+          time compact compile +0.31.1 "${contracts[0]}" managed
+
+      - name: Run the benchmark
+        run: |
+          set -o pipefail
+          node bench.mjs 3 2>&1 | tee bench-run.log
+
+      - name: Stop the proof server
+        if: always()
+        run: docker rm -f proof-server || true
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  #v7.0.2
+        with:
+          name: spike-bench-results-${{ matrix.spike }}
+          path: spike/${{ matrix.spike }}/bench-run.log
+          if-no-files-found: warn
+
+  # One stable check name for branch protection. The matrix jobs are named per
+  # spike, so they change as spikes are added; this job fails if any spike failed.
+  result:
+    name: All spike benchmarks
+    needs: [find, bench]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check every spike passed
+        env:
+          FIND: ${{ needs.find.result }}
+          RUNS: ${{ needs.bench.result }}
+        run: |
+          echo "find=$FIND bench=$RUNS"
+          [ "$FIND" = success ] && { [ "$RUNS" = success ] || [ "$RUNS" = skipped ]; }

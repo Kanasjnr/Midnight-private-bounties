@@ -17,13 +17,13 @@ It matches the key sizes: each +1 in k roughly doubles the key.
 ## What this tells us
 
 - **The core is small.** Checker, key exchange and verifiable encryption fit in k = 11. The
-  feared cost of "encryption plus key exchange in one proof" doesn't show up.
+feared cost of "encryption plus key exchange in one proof" doesn't show up.
 - **Payload size is nearly free at this scale.** Going from 4 to 8 elements didn't change k.
 - **The checker's hash dominates.** A SHA-256 checker costs 8x the rows of the whole
-  key-exchange-and-encryption core. Templates should use `transientHash` where the checker
-  allows it.
+key-exchange-and-encryption core. Templates should use `transientHash` where the checker
+allows it.
 - The circuit range-checks the ephemeral scalar (`constrain_bits` on the 248-bit witness), as
-  designed.
+designed.
 
 ## Proving time
 
@@ -40,7 +40,20 @@ one warm-up call, which also loads the public parameters for its k, then 3 timed
 | `submitSha` | 14 | 9.40 s | 5.63 s | 4.62 to 6.32 s | 4,860 B |
 
 Measured on an Intel i5 MacBook with Docker Desktop, while the machine was heavily loaded
-(load average 32 to 67 during the run). Expect faster times on a quiet machine.
+(load average 32 to 67 during the run).
+
+**On an idle machine** (the `Spike benchmarks` workflow on a GitHub `ubuntu-latest` runner, run
+40282085397, same keys and versions):
+
+| Circuit | Median | Min to max |
+|---|---|---|
+| `checkOnly` | 0.05 s | 0.05 to 0.05 s |
+| `encryptOnly` | 0.11 s | 0.11 to 0.11 s |
+| `submit4` | **0.41 s** | 0.40 to 0.44 s |
+| `submit8` | 0.41 s | 0.41 to 0.41 s |
+| `submitSha` | 2.61 s | 2.61 to 2.62 s |
+
+The round trip passed there too.
 
 ## Decryption round trip (Q4)
 
