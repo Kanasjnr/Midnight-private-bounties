@@ -1,7 +1,7 @@
 # Private Bounties on Midnight: Architecture
 
-**Status:** draft v0.2, 2026-10-24. Updated with the week-1 spike results so far (Q1 to Q4 and Q7
-answered, Q5 partly; see section 18). Anything still marked 🔬 is unproven. Code blocks
+**Status:** draft v0.3, 2026-10-26. Updated with the week-1 spike results so far (Q1 to Q4, Q7, Q9
+and Q11 answered, Q5 partly; see section 18). Anything still marked 🔬 is unproven. Code blocks
 are **pseudocode, not Compact**. Midnight-specific facts were checked against the Compact
 standard library at `compactc-v0.31.1` and against
 [midnight-examples](https://github.com/midnightntwrk/midnight-examples) at `cb250c9`.
@@ -165,10 +165,13 @@ privacy check (Q3b).
 | Same core with a SHA-256 checker | 14 | about 5.6 s to prove | [Q1](spike/q1-proof-size/RESULTS.md) |
 | Escrow `submit` (merge + payout) | 16 | about 100 s to 134 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | `postBounty`, `refund` | 15 | about 40 s to 67 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
+| **Full `submit`**: checker + key exchange + encryption + escrow | **16** | about 40 s to prove (median 42.9 s) | [Q11](spike/q11-full-submit/RESULTS.md) |
 
 **Coin handling, not cryptography, sets the cost.** Every coin operation hashes commitments and
-nullifiers with SHA-256 inside the standard library. A full `submit` (checker, key exchange,
-encryption and escrow) will be at least k = 16 (Q11). Times were measured on a heavily loaded
+nullifiers with SHA-256 inside the standard library. The full `submit` (checker, key exchange,
+encryption and escrow) is k = 16, the same as the escrow alone, so the cryptography is almost free
+on top of it (Q11). The UI shows proving progress and expects a wait of up to a minute on modest
+hardware. Times were measured on a heavily loaded
 Intel i5 laptop, and "end to end" includes proving, wallet balancing and landing on chain.
 
 ## 8. Cryptography
@@ -297,7 +300,7 @@ flowchart TD
 | Post a bounty | Form, then a `postBounty` transaction | DApp Connector, proof server |
 | "What goes public" review | Static, per template | Selective disclosure, made visible |
 | Bounty detail | Ledger state | Public params, deadline countdown from block time |
-| Solve | Pure checker, then one `submit` | Local proving, witnesses, shielded coins |
+| Solve | Pure checker, then one `submit`, with proving progress shown (about 40 s on modest hardware) | Local proving, witnesses, shielded coins |
 | My bounties / inbox | Ledger state and private state | Private state store, pure-circuit decryption |
 | Refund | `refund` transaction | Block time |
 
@@ -547,9 +550,9 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q6 | Can the wallet (Lace, 1AM) balance a transaction that pays in and receives a payout? | 🔬 Open | Run `submit` through the DApp Connector |
 | Q7 | Block time units and drift | ✅ Answered | Unix seconds; deadline checks enforced on chain. [Results](spike/q2-escrow/RESULTS.md) |
 | Q8 | Persistent, encrypted browser private state | 🔬 Open | Prototype a store that survives a reload |
-| Q9 | `JubjubPoint` and vectors inside ledger map values | Partly | Work as top-level ledger fields (Q1 spike). Inside a map value struct: not yet tested |
+| Q9 | `JubjubPoint` and vectors inside ledger map values | ✅ Answered | Stored in `Bounty` and `Delivery` structs, read back and decrypted in the runtime. [Results](spike/q11-full-submit/RESULTS.md) |
 | Q10 | Which prover may a user's wallet use? | 🔬 Open | Some wallets (1AM) can prove on a hosted service, which would send the answer off the device. Decide what the app requires and whether to warn |
-| Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | 🔬 Open | Expected k ≥ 16; measure k and time |
+| Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 40 s to prove on a loaded i5; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 
