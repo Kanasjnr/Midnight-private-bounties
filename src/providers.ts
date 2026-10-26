@@ -1,0 +1,67 @@
+// This file is part of example-shielded-chips.
+// Copyright (C) Midnight Foundation
+// SPDX-License-Identifier: Apache-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// You may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Returns the providers in an object which can be created for each user's individual tests
+import { type MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
+import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
+import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
+import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
+import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
+import { type MidnightWalletProvider } from './wallet.js';
+import { type NetworkConfig } from './config.js';
+import { type BountyPreimageImpureCircuits, type TestTokenImpureCircuits } from '../contract/index.js';
+
+// The set of callable circuit ids across BOTH contracts, derived from each
+// compiled contract's generated types. This tracks whatever circuits the two
+// .compact files export, so it never needs editing when circuits change.
+export type BountyCircuits = keyof BountyPreimageImpureCircuits<unknown> | keyof TestTokenImpureCircuits<unknown>;
+
+export type BountyProviders = MidnightProviders<any>;
+
+// Build one provider set per (wallet, contract). The zkConfigPath must point at
+// a single managed/<contract>/ directory because NodeZkConfigProvider resolves
+// keys at `<directory>/keys/<circuitId>.{prover,verifier}`. `storeSuffix` keeps
+// each set's private-state store separate: several are built in the same
+// millisecond, so a timestamp alone would collide.
+export function buildProviders(
+  wallet: MidnightWalletProvider,
+  zkConfigPath: string,
+  config: NetworkConfig,
+  storeSuffix = 'private-bounties',
+): BountyProviders {
+  const zkConfigProvider = new NodeZkConfigProvider<BountyCircuits>(zkConfigPath);
+  return {
+    privateStateProvider: levelPrivateStateProvider({
+      // One LevelDB directory per party. Sharing the default directory made two
+      // parties' concurrent calls collide on its lock (the first B4 run).
+      midnightDbName: `midnight-level-db-${storeSuffix}`,
+      privateStateStoreName: `${storeSuffix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      // this password has requirements (capital/special chars >= 3)
+      privateStoragePasswordProvider: () => 'PrivateBounties-Test-Password!',
+      accountId: wallet.getCoinPublicKey(),
+    }),
+    publicDataProvider: indexerPublicDataProvider(
+      config.indexer,
+      config.indexerWS,
+    ),
+    zkConfigProvider,
+    proofProvider: httpClientProofProvider(
+      config.proofServer,
+      zkConfigProvider,
+    ),
+    walletProvider: wallet,
+    midnightProvider: wallet,
+  };
+}
