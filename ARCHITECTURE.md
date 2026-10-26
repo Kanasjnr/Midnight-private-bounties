@@ -1,7 +1,7 @@
 # Private Bounties on Midnight: Architecture
 
-**Status:** draft v0.3, 2026-10-26. Updated with the week-1 spike results so far (Q1 to Q4, Q7, Q9
-and Q11 answered, Q5 partly; see section 18). Anything still marked 🔬 is unproven. Code blocks
+**Status:** draft v0.4, 2026-10-26. Updated with the week-1 spike results so far (Q1 to Q5, Q3b,
+Q7, Q9 and Q11 answered; see section 18). Anything still marked 🔬 is unproven. Code blocks
 are **pseudocode, not Compact**. Midnight-specific facts were checked against the Compact
 standard library at `compactc-v0.31.1` and against
 [midnight-examples](https://github.com/midnightntwrk/midnight-examples) at `cb250c9`.
@@ -154,8 +154,8 @@ TypeScript compute exactly what the circuit computes.
 
 The first draft had a separate `stake` circuit, plus `withdrawStake` for a solver who lost a race.
 Q3 showed a coin received in the same transaction can be merged first, so `submit` does it all in
-one go. The two-step version stays as a fallback, in case the one-transaction payout fails its
-privacy check (Q3b).
+one go. The one-transaction payout passed the same privacy checks as the two-step one (Q3b), so
+the two-step version is no longer needed.
 
 ### Measured cost
 
@@ -241,8 +241,12 @@ transaction, and the solver gets the reward plus their coin back in one payout.
 **Q2, verified on a local devnet** with the two-step version: the escrow coin is public as
 designed, while the solver's coin nonce, the payout nonce, both wallets' coin keys and the solver's
 secret never appear in public state, and the payout nonce differs from the escrow nonce
-([results](spike/q2-escrow/RESULTS.md)). 🔬 **Q3b:** the same leak check still has to run on the
+([results](spike/q2-escrow/RESULTS.md)). **Q3b, verified:** the same checks pass for the
 one-transaction payout.
+
+**Racing solvers (Q5, verified):** two solvers submitting at once both spend the same escrow coin.
+The first transaction lands; the node rejects the second as a whole (`TransactionInvalid(Zswap)`),
+so the losing solver's coin never leaves their wallet. The escrow coin works as the lock.
 
 **Refunds:** the poster's refund comes from the public escrow coin, so it is linkable to the
 poster's wallet **by someone who already suspects that wallet**. v1 documents this, and the same
@@ -486,7 +490,7 @@ flowchart LR
 | Price (private offer, v2) | Buyer and seller only 🔬 Q2 |
 | Poster identity | Per-bounty pseudonym. The wallet isn't linked |
 | Solver identity | Per-bounty pseudonym |
-| Payout destination | Shielded coin, unlinkable because the solver's coin is merged first (section 9). Verified for the two-step version; one-transaction 🔬 Q3b |
+| Payout destination | Shielded coin, unlinkable because the solver's coin is merged first (section 9). Verified on a local devnet for both versions |
 | Refund destination | Linkable only by someone who already suspects the poster's wallet (v1 limit) |
 | Poster key `b`, solver scalar `e` | Private state, and `e` is discarded after proving |
 | Fees | Paid in DUST |
@@ -501,7 +505,7 @@ flowchart LR
 | Poster refuses to pay | Can't: payout and delivery are one transaction |
 | Poster refunds early | `refund` requires `blockTimeGte(deadline)` |
 | Solver submits late | `submit` requires `blockTimeLt(deadline)` |
-| Two solvers race | The first to land wins. The other's transaction fails at the status check, so their coin never leaves their wallet. 🔬 Not yet tested on chain (Q5) |
+| Two solvers race | The first to land wins. Both spend the same escrow coin, so the node rejects the other transaction whole and the losing solver's coin never leaves their wallet (verified, Q5) |
 | Copying a pending submission | Nothing to copy: the answer is encrypted and the payout is bound in the proof |
 | Payout traced to the solver's wallet | Solver's fresh coin merged first (section 9) |
 | Escrow traced to the poster's wallet | The app always builds the escrow as a fresh coin with a random nonce, never a wallet coin's nonce |
@@ -545,9 +549,9 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q1 | Is `submit` provable in reasonable time and size? | ✅ Answered | Crypto core k = 11, proves in 0.4 s on an idle runner; SHA-256 checker k = 14. [Results](spike/q1-proof-size/RESULTS.md) |
 | Q2 | What exactly is public after `postBounty`, `submit`, `refund`? | ✅ Answered | Escrow coin public as designed; solver's coin, payout nonce and wallet keys never public; action names public. [Results](spike/q2-escrow/RESULTS.md) |
 | Q3 | Can a coin received in the same transaction be the **first** merge input? | ✅ Works | One-transaction `submit` paid out on a local devnet, no effects-budget error. [Results](spike/q2-escrow/RESULTS.md) |
-| Q3b | Does the one-transaction payout pass the same leak check as Q2? | 🔬 Open | Run Q2's privacy checks on `submitOneTx` |
+| Q3b | Does the one-transaction payout pass the same leak check as Q2? | ✅ Answered | Yes: solver's coin, payout nonce, wallet keys and secret never public. [Results](spike/q2-escrow/RESULTS.md) |
 | Q4 | Do pure circuits off-chain reproduce the circuit's `ecMul` and `transientHash`? | ✅ Answered | Poster decrypts exactly; a wrong key doesn't (JS runtime). [Results](spike/q1-proof-size/RESULTS.md) |
-| Q5 | Does a failing `submit` leave no partial state? | Partly | Bad calls are rejected before proving and change nothing. Two valid submits racing on chain: not yet tested |
+| Q5 | Does a failing `submit` leave no partial state? | ✅ Answered | Bad calls are rejected before proving. Racing submits: one wins, the other is rejected whole and the loser keeps their coin. [Results](spike/q2-escrow/RESULTS.md) |
 | Q6 | Can the wallet (Lace, 1AM) balance a transaction that pays in and receives a payout? | 🔬 Open | Run `submit` through the DApp Connector |
 | Q7 | Block time units and drift | ✅ Answered | Unix seconds; deadline checks enforced on chain. [Results](spike/q2-escrow/RESULTS.md) |
 | Q8 | Persistent, encrypted browser private state | 🔬 Open | Prototype a store that survives a reload |

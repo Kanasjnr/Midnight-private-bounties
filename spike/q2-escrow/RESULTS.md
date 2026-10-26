@@ -130,3 +130,35 @@ A conflict that only shows up on chain, two valid submits racing, wasn't exercis
 
 Local devnet only, on a loaded laptop. Times will differ on other machines and networks. B4 needs
 a rerun with two processes to cover on-chain conflicts.
+
+## Follow-up: Q3b and Q5 on GitHub (`onetx.test.ts`)
+
+Run by the `Spike on devnet` workflow on a GitHub `ubuntu-latest` runner (run 40282319696, commit
+`58d0874`), with the same images and versions as above. Both files passed: 10 of 10 tests in
+1,122 s. Each party now has its own private-state store, so concurrent calls no longer collide.
+
+| Bounty | Check | Result | Observed |
+|---|---|---|---|
+| B6 | One-transaction submit pays the solver | pass | +100 net (reward plus their own coin back), status SOLVED |
+| B6 | Solver's fresh coin nonce absent from public state | pass | not found |
+| B6 | Payout nonce absent, and different from the escrow and fresh nonces | pass | not found; different from both |
+| B6 | Solver and poster wallet coin keys, and solver's secret, absent | pass | not found |
+| B7 | Two solvers call the one-transaction submit at once | pass | Bob's landed; Charlie's was rejected by the node |
+| B7 | The losing solver keeps their coin | pass | Charlie's balance changed by 0 |
+| B7 | Winner paid once, one delivery | pass | Bob +100 net, delivery 71, escrow removed |
+
+After a successful submit the escrow entry is removed, so B6's leak check covered fewer byte
+fields (3) than B1's (10). What protects the payout is that its nonce derives from the solver's
+fresh coin, which never appears on chain.
+
+The losing transaction failed at submission with `1010: Invalid Transaction: Custom error: 103`,
+which is `TransactionInvalid(Zswap)`: the node rejected its coin spends. Both transactions spend
+the same escrow coin, so once the first lands, the second is invalid as a whole and nothing of it
+applies. That is our reading of the error; the node doesn't say which spend failed.
+
+**Q3b: pass.** The one-transaction payout is as private as the two-step one.
+
+**Q5: answered.** Two valid submits racing on chain: exactly one wins, and the loser's transaction
+is rejected whole, so their coin stays in their wallet. Together with the client-side rejections
+above, a failing submit leaves no partial state.
+
