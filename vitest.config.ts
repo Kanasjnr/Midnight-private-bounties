@@ -21,6 +21,9 @@ export default defineConfig({
     // a local devnet's beforeAll.
     hookTimeout: isRemote ? 90 * 60_000 : 15 * 60_000,
     include: ['src/**/*.test.ts'],
+    // The devnet test files share the same wallets. Run files one at a time,
+    // or concurrent spends of the same coins fail to balance.
+    fileParallelism: false,
     reporters: ['default'],
     sequence: { concurrent: false },
     disableConsoleIntercept: true,
