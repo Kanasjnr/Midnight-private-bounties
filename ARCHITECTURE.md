@@ -100,7 +100,7 @@ private-bounties/
 │   ├── stream_cipher.compact     module: keystream, encrypt4, decrypt4
 │   ├── pseudonym.compact         module: derive
 │   ├── bounty_preimage.compact   template contract (built)
-│   ├── bounty_factor.compact     template contract (planned)
+│   ├── bounty_factor.compact     template contract (built)
 │   ├── bounty_signed_record.compact  template contract (planned)
 │   ├── test_token.compact        test-only reward token
 │   ├── witnesses.ts
@@ -533,7 +533,7 @@ flowchart LR
 | Template | The bounty asks for | Public parameters | Private answer | Why it's in v1 |
 |---|---|---|---|---|
 | `preimage` | x with `transientHash(x) = target` | target | x | Smallest circuit, used by the spike |
-| `factor` | p, q > 1 with `p × q = N` | N | p, q | The classic ZKCP demo |
+| `factor` | p, q > 1 with `p × q = N` | N (below 2^128), in the same `target` slot | p, q, cast to 64-bit integers | The classic ZKCP demo. Built: the casts stop fake factors that only multiply to N modulo the field |
 | `signed-record` | An issuer-signed record whose field f ≥ X | issuer key, f, X | Record and signature | Real data-marketplace use. Reuses zk-loan's Schnorr module |
 
 Rule from Q1: checkers use `transientHash` wherever they can. A SHA-256 (`persistentHash`)

@@ -21,12 +21,19 @@ import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { type MidnightWalletProvider } from './wallet.js';
 import { type NetworkConfig } from './config.js';
-import { type BountyPreimageImpureCircuits, type TestTokenImpureCircuits } from '../contract/index.js';
+import {
+  type BountyFactorImpureCircuits,
+  type BountyPreimageImpureCircuits,
+  type TestTokenImpureCircuits,
+} from '../contract/index.js';
 
 // The set of callable circuit ids across BOTH contracts, derived from each
 // compiled contract's generated types. This tracks whatever circuits the two
 // .compact files export, so it never needs editing when circuits change.
-export type BountyCircuits = keyof BountyPreimageImpureCircuits<unknown> | keyof TestTokenImpureCircuits<unknown>;
+export type BountyCircuits =
+  | keyof BountyPreimageImpureCircuits<unknown>
+  | keyof BountyFactorImpureCircuits<unknown>
+  | keyof TestTokenImpureCircuits<unknown>;
 
 export type BountyProviders = MidnightProviders<any>;
 
