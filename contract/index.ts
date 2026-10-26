@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Contract as BountyPreimageContractClass } from './managed/bounty_preimage/contract/index.js';
 import { Contract as BountyFactorContractClass } from './managed/bounty_factor/contract/index.js';
+import { Contract as BountySignedRecordContractClass } from './managed/bounty_signed_record/contract/index.js';
 import { Contract as TestTokenContractClass } from './managed/test_token/contract/index.js';
 import { bountyWitnesses } from './witnesses.js';
 
@@ -30,6 +31,14 @@ export {
 } from './managed/bounty_factor/contract/index.js';
 
 export {
+  Contract as BountySignedRecordContract,
+  ledger as bountySignedRecordLedger,
+  pureCircuits as bountySignedRecordPureCircuits,
+  type Ledger as BountySignedRecordLedger,
+  type ImpureCircuits as BountySignedRecordImpureCircuits,
+} from './managed/bounty_signed_record/contract/index.js';
+
+export {
   Contract as TestTokenContract,
   type ImpureCircuits as TestTokenImpureCircuits,
 } from './managed/test_token/contract/index.js';
@@ -38,6 +47,7 @@ export {
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 export const bountyPreimageZkConfigPath = path.resolve(currentDir, 'managed', 'bounty_preimage');
 export const bountyFactorZkConfigPath = path.resolve(currentDir, 'managed', 'bounty_factor');
+export const bountySignedRecordZkConfigPath = path.resolve(currentDir, 'managed', 'bounty_signed_record');
 export const testTokenZkConfigPath = path.resolve(currentDir, 'managed', 'test_token');
 
 export const CompiledBountyPreimageContract = CompiledContract.make(
@@ -55,6 +65,14 @@ export const CompiledBountyFactorContract = CompiledContract.make(
 ).pipe(
   CompiledContract.withWitnesses(bountyWitnesses),
   CompiledContract.withCompiledFileAssets(bountyFactorZkConfigPath),
+);
+
+export const CompiledBountySignedRecordContract = CompiledContract.make(
+  'BountySignedRecordContract',
+  BountySignedRecordContractClass,
+).pipe(
+  CompiledContract.withWitnesses(bountyWitnesses),
+  CompiledContract.withCompiledFileAssets(bountySignedRecordZkConfigPath),
 );
 
 // Test-only: the reward token for local networks and testnets.
