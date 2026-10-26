@@ -161,17 +161,18 @@ privacy check (Q3b).
 
 | Part | k | Proving or transaction time | Source |
 |---|---|---|---|
-| Checker + key exchange + encryption (4 or 8 elements) | 11 | about 1.9 s to 2.7 s to prove | [Q1](spike/q1-proof-size/RESULTS.md) |
-| Same core with a SHA-256 checker | 14 | about 5.6 s to prove | [Q1](spike/q1-proof-size/RESULTS.md) |
+| Checker + key exchange + encryption (4 or 8 elements) | 11 | 0.4 s to prove (idle runner); 1.9 to 2.7 s (loaded laptop) | [Q1](spike/q1-proof-size/RESULTS.md) |
+| Same core with a SHA-256 checker | 14 | 2.6 s (idle runner); 5.6 s (loaded laptop) | [Q1](spike/q1-proof-size/RESULTS.md) |
 | Escrow `submit` (merge + payout) | 16 | about 100 s to 134 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | `postBounty`, `refund` | 15 | about 40 s to 67 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
-| **Full `submit`**: checker + key exchange + encryption + escrow | **16** | about 40 s to prove (median 42.9 s) | [Q11](spike/q11-full-submit/RESULTS.md) |
+| **Full `submit`**: checker + key exchange + encryption + escrow | **16** | **about 11 s to prove (idle runner)**; 43 s (loaded laptop) | [Q11](spike/q11-full-submit/RESULTS.md) |
 
 **Coin handling, not cryptography, sets the cost.** Every coin operation hashes commitments and
 nullifiers with SHA-256 inside the standard library. The full `submit` (checker, key exchange,
 encryption and escrow) is k = 16, the same as the escrow alone, so the cryptography is almost free
-on top of it (Q11). The UI shows proving progress and expects a wait of up to a minute on modest
-hardware. Times were measured on a heavily loaded
+on top of it (Q11). The UI shows proving progress; expect around 11 s on an ordinary 4-core
+machine, longer on a busy laptop. "Idle runner" times come from the `Spike benchmarks` workflow on
+a GitHub `ubuntu-latest` runner; the others were measured on a heavily loaded
 Intel i5 laptop, and "end to end" includes proving, wallet balancing and landing on chain.
 
 ## 8. Cryptography
@@ -300,7 +301,7 @@ flowchart TD
 | Post a bounty | Form, then a `postBounty` transaction | DApp Connector, proof server |
 | "What goes public" review | Static, per template | Selective disclosure, made visible |
 | Bounty detail | Ledger state | Public params, deadline countdown from block time |
-| Solve | Pure checker, then one `submit`, with proving progress shown (about 40 s on modest hardware) | Local proving, witnesses, shielded coins |
+| Solve | Pure checker, then one `submit`, with proving progress shown (about 11 s on an ordinary machine) | Local proving, witnesses, shielded coins |
 | My bounties / inbox | Ledger state and private state | Private state store, pure-circuit decryption |
 | Refund | `refund` transaction | Block time |
 
@@ -541,7 +542,7 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 
 | # | Question | Status | Result |
 |---|---|---|---|
-| Q1 | Is `submit` provable in reasonable time and size? | ✅ Answered | Crypto core k = 11, proves in about 2 s; SHA-256 checker k = 14. [Results](spike/q1-proof-size/RESULTS.md) |
+| Q1 | Is `submit` provable in reasonable time and size? | ✅ Answered | Crypto core k = 11, proves in 0.4 s on an idle runner; SHA-256 checker k = 14. [Results](spike/q1-proof-size/RESULTS.md) |
 | Q2 | What exactly is public after `postBounty`, `submit`, `refund`? | ✅ Answered | Escrow coin public as designed; solver's coin, payout nonce and wallet keys never public; action names public. [Results](spike/q2-escrow/RESULTS.md) |
 | Q3 | Can a coin received in the same transaction be the **first** merge input? | ✅ Works | One-transaction `submit` paid out on a local devnet, no effects-budget error. [Results](spike/q2-escrow/RESULTS.md) |
 | Q3b | Does the one-transaction payout pass the same leak check as Q2? | 🔬 Open | Run Q2's privacy checks on `submitOneTx` |
@@ -552,7 +553,7 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q8 | Persistent, encrypted browser private state | 🔬 Open | Prototype a store that survives a reload |
 | Q9 | `JubjubPoint` and vectors inside ledger map values | ✅ Answered | Stored in `Bounty` and `Delivery` structs, read back and decrypted in the runtime. [Results](spike/q11-full-submit/RESULTS.md) |
 | Q10 | Which prover may a user's wallet use? | 🔬 Open | Some wallets (1AM) can prove on a hosted service, which would send the answer off the device. Decide what the app requires and whether to warn |
-| Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 40 s to prove on a loaded i5; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
+| Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 11 s to prove on an idle runner; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 

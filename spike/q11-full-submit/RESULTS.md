@@ -28,7 +28,11 @@ core was k = 11. Adding the checker, key exchange and encryption to the escrow d
 | `submit` | 39.5 s | **42.9 s** | 39.9 to 72.3 s | 4,860 B |
 
 Measured on an Intel i5 MacBook while the load average went from 128 to 233. These are worst-case
-numbers; a quiet machine will be faster. This is proving time only. On a network, Q2 measured
+numbers.
+
+**On an idle machine** (the `Spike benchmarks` workflow on a GitHub `ubuntu-latest` runner, run
+40282085397, same keys and versions): `postBounty` median **5.8 s** (5.5 to 5.9 s), `submit` median
+**10.9 s** (10.9 to 11.0 s). The full compile with keys took 46 s there, and the Q9 checks passed. This is proving time only. On a network, Q2 measured
 about 100 to 134 s end to end for `submit`, which also covers wallet balancing and inclusion.
 
 ## Q9: JubjubPoint inside map values
@@ -43,8 +47,8 @@ This ran in `compact-runtime` against the contract's ledger state, not on a depl
 
 ## Verdict
 
-**Q11: a full `submit` is k = 16 and proves in about 40 s on a heavily loaded i5.** The escrow sets
-the size; the cryptography is almost free on top of it. The UI should show proving progress and
-expect a wait of up to a minute on modest hardware.
+**Q11: a full `submit` is k = 16 and proves in about 11 s on an idle 4-core runner** (about 40 s
+on a heavily loaded i5). The escrow sets the size; the cryptography is almost free on top of it.
+The UI should show proving progress.
 
 **Q9: answered in the runtime.** Curve points work inside struct values of ledger maps.
