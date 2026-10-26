@@ -17,14 +17,10 @@ on:
       - 'spike/*/package.json'
       - 'spike/*/package-lock.json'
       - '.github/workflows/spike-bench.yml'
+  # PRs into next-release and main run every time, with no path filter, so the
+  # summary job below always reports and can be a required status check.
   pull_request:
-    branches: [next-release]
-    paths:
-      - 'spike/*/bench.mjs'
-      - 'spike/*/*.compact'
-      - 'spike/*/package.json'
-      - 'spike/*/package-lock.json'
-      - '.github/workflows/spike-bench.yml'
+    branches: [next-release, main]
   workflow_dispatch:
 
 permissions: {}
@@ -127,3 +123,21 @@ jobs:
           name: spike-bench-results-${{ matrix.spike }}
           path: spike/${{ matrix.spike }}/bench-run.log
           if-no-files-found: warn
+
+  # One stable check name for branch protection. The matrix jobs are named per
+  # spike, so they change as spikes are added; this job fails if any spike failed.
+  result:
+    name: All spike benchmarks
+    needs: [find, bench]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check every spike passed
+        env:
+          FIND: ${{ needs.find.result }}
+          RUNS: ${{ needs.bench.result }}
+        run: |
+          echo "find=$FIND bench=$RUNS"
+          [ "$FIND" = success ] && { [ "$RUNS" = success ] || [ "$RUNS" = skipped ]; }

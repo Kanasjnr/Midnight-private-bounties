@@ -15,11 +15,10 @@ on:
     paths:
       - 'spike/*/harness/**'
       - '.github/workflows/spike-devnet.yml'
+  # PRs into next-release and main run every time, with no path filter, so the
+  # summary job below always reports and can be a required status check.
   pull_request:
-    branches: [next-release]
-    paths:
-      - 'spike/*/harness/**'
-      - '.github/workflows/spike-devnet.yml'
+    branches: [next-release, main]
   workflow_dispatch:
 
 permissions: {}
@@ -152,3 +151,21 @@ jobs:
             ${{ env.HARNESS }}/spike-run.log
             ${{ env.HARNESS }}/logs/
           if-no-files-found: warn
+
+  # One stable check name for branch protection. The matrix jobs are named per
+  # spike, so they change as spikes are added; this job fails if any spike failed.
+  result:
+    name: All devnet spikes
+    needs: [find, devnet]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check every spike passed
+        env:
+          FIND: ${{ needs.find.result }}
+          RUNS: ${{ needs.devnet.result }}
+        run: |
+          echo "find=$FIND devnet=$RUNS"
+          [ "$FIND" = success ] && { [ "$RUNS" = success ] || [ "$RUNS" = skipped ]; }
