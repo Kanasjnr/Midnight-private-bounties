@@ -1,7 +1,8 @@
 # Private Bounties on Midnight: Architecture
 
-**Status:** draft v0.4, 2026-10-26. Updated with the week-1 spike results so far (Q1 to Q5, Q3b,
-Q7, Q9 and Q11 answered; see section 18). Anything still marked 🔬 is unproven. Code blocks
+**Status:** draft v0.5, 2026-10-26. Updated with the week-1 spike results (Q1 to Q5, Q3b, Q7, Q9
+and Q11 answered; see section 18) and the fixes from the first security audit
+([report](docs/security-audit.md)). Anything still marked 🔬 is unproven. Code blocks
 are **pseudocode, not Compact**. Midnight-specific facts were checked against the Compact
 standard library at `compactc-v0.31.1` and against
 [midnight-examples](https://github.com/midnightntwrk/midnight-examples) at `cb250c9`.
@@ -152,7 +153,7 @@ and `threshold: Uint<64>`. In every template the payload is four field elements
 
 | Circuit | Caller | What the proof shows | Public effects |
 |---|---|---|---|
-| `postBounty` | Poster | Poster pseudonym comes from their secret; the coin has the reward color and a non-zero value; the deadline is still ahead | Bounty record and escrow coin |
+| `postBounty` | Poster | Poster pseudonym comes from their secret and this bounty's ID; the coin has the reward color and a non-zero value; the deadline is still ahead; the poster's key (and in signed-record, the issuer's) is on the curve, in the prime-order subgroup and not the identity | Bounty record and escrow coin |
 | `submit` | Solver | Checker passes, ECDH is correct, c encrypts the answer, before the deadline. Receives the solver's fresh coin and merges it first | `E`, `c`, status `SOLVED`, one shielded payout: reward plus the solver's coin |
 | `refund` | Poster | Pseudonym matches; deadline passed; still `OPEN` | Status `REFUNDED`, escrow returned |
 | `answerHash`, `checkAnswer` (pure) | Browser | No proof: runs in JS | None: builds a bounty's target, and pre-checks an answer before paying for a proof |
@@ -160,7 +161,9 @@ and `threshold: Uint<64>`. In every template the payload is four field elements
 
 Three secrets stay separate, as shielded-chips' lessons advise:
 - the poster's identity secret `sk` (pseudonym, in-circuit);
-- the poster's encryption key `b` (off-chain only; only `b·G` is public);
+- the poster's encryption key `b`, off-chain only. A new one is derived for every bounty from a
+  32-byte seed (`keys.ts`), so bounties can't be linked through `b·G`. The seed can live in the
+  private state, so one backup covers every bounty;
 - the solver's ephemeral scalar `e`, which a witness draws fresh for every submission and which
   is never stored.
 
@@ -206,11 +209,14 @@ Notes for implementation:
   because `==` compiles to JS reference equality (a note in zk-loan's `schnorr.compact`).
 - **Field addition, not XOR.** It is native and cheap in-circuit. Each `m[i]` must fit in a Field,
   so we pack about 31 bytes per element.
-- **A keystream must never repeat.** Fresh `e` per submission and `bountyId` plus the index in
-  the hash input give domain separation.
-- **Pin the hash.** Decryption has to use the same `transientHash` as the circuit that made the
-  ciphertext. The UI calls the pure circuits **from the same compiled contract**, so a compiler
-  upgrade can't silently break old ciphertexts. 🔬 Q4
+- **A keystream must never repeat.** Fresh `e` per submission and the bounty ID plus the index in
+  the hash input give domain separation. The ID enters as a field element, which keeps 248 of its
+  256 bits; that is harmless because the key also depends on the fresh `e`.
+- **Keep the plaintext, and pin the runtime.** Decryption runs `transientHash` from the installed
+  `@midnight-ntwrk/compact-runtime` package, not from the compiled contract, and the ledger allows
+  that hash to change at a hard fork. So the poster's app decrypts as soon as a bounty is solved
+  and keeps the plaintext in private state, and the app pins its exact runtime version. (An
+  earlier draft claimed the compiled contract pins the hash; the audit showed it doesn't.)
 
 ### Private offer (v2): wrapping a committed key
 
@@ -503,8 +509,8 @@ flowchart LR
 | Escrow coin (open bounty) | Public: nonce, value and tree position. A fresh coin, so it doesn't point at the poster's wallet |
 | Which action a pseudonym took | Public: the indexer shows each transaction's circuit name (`postBounty`, `submit`, `refund`) |
 | Price (private offer, v2) | Buyer and seller only 🔬 Q2 |
-| Poster identity | Per-bounty pseudonym. The wallet isn't linked |
-| Solver identity | Per-bounty pseudonym |
+| Poster identity | A pseudonym per bounty (it hashes in the bounty ID), and a separate encryption key per bounty. The wallet isn't linked, and a poster's bounties can't be grouped. An earlier version used one pseudonym per deployment; the audit caught it |
+| Solver identity | Nothing on chain identifies the solver at all |
 | Payout destination | Shielded coin, unlinkable because the solver's coin is merged first (section 9). Verified on a local devnet for both versions |
 | Refund destination | Linkable only by someone who already suspects the poster's wallet (v1 limit) |
 | Poster key `b`, solver scalar `e` | Private state, and `e` is discarded after proving |
@@ -517,7 +523,8 @@ flowchart LR
 |---|---|
 | Solver submits a wrong answer | The checker runs in the circuit, so no valid proof means no payout |
 | Solver encrypts garbage or uses the wrong key | The proof binds `c` to `posterPk` through ECDH and the keystream |
-| Poster refuses to pay | Can't: payout and delivery are one transaction |
+| Poster refuses to pay | Can't block a valid payout: payout and delivery are one transaction |
+| Poster claims their own bounty | A poster who knows an answer (always for `preimage`, and for `factor` when they generated N) can submit it themselves and take the reward back before the deadline. A solver loses effort but no funds. This can't be prevented in-circuit, so it is a stated trust assumption for those templates |
 | Poster refunds early | `refund` requires `blockTimeGte(deadline)` |
 | Solver submits late | `submit` requires `blockTimeLt(deadline)` |
 | Two solvers race | The first to land wins. Both spend the same escrow coin, so the node rejects the other transaction whole and the losing solver's coin never leaves their wallet (verified, Q5) |
@@ -527,9 +534,13 @@ flowchart LR
 | Concurrent calls from one user | Calls run one at a time, with one private-state store per user (two at once collided on the store's lock in Q2) |
 | Small answer space | The checker itself can leak the answer (a 4-digit PIN can be brute-forced). The UI warns, and templates avoid it |
 | Field wraparound in a checker | Checkers use bounded `Uint` arithmetic (`p × q = N` with no modular wrap) |
-| Invalid or low-order `posterPk` | Only hurts the poster. The UI generates and validates keys |
+| Invalid or low-order `posterPk` or `issuerPk` | `postBounty` rejects them: the proof checks the key is on the curve and in the prime-order subgroup, and an assert rejects the identity point, which would make every shared key public |
+| Biased issuer signatures | `signing.ts` draws Schnorr nonces uniformly modulo the subgroup order. An earlier version drew them from 248 bits, which leaks enough to recover an issuer's key from roughly a hundred signatures |
+| A signature made for another app | Signed-record bounties pin a schema tag in `record[0]`, so a zk-loan attestation from the same issuer doesn't qualify |
+| A submit that lands after the deadline | Rejected whole, with the solver's coin left in their wallet (devnet test D5). The UI warns near the deadline, because a submit takes about a minute to prove and land |
+| Bounty ID squatting | Someone who sees a pending ID can post first with the same ID ("Bounty already exists"). Denial of service only; the app retries with a fresh ID |
 | Poster loses key `b` | An encrypted backup or export of the private state |
-| Hash function changes between compiler versions | Decrypt with the pure circuits from the same compiled contract |
+| `transientHash` changes at a hard fork | The poster's app decrypts as soon as a bounty is solved, keeps the plaintext, and pins its runtime version |
 | A buyer re-shares purchased data (v2) | Inherent to selling data. Out of scope |
 
 ## 16. Checker templates (v1)
@@ -537,8 +548,8 @@ flowchart LR
 | Template | The bounty asks for | Public parameters | Private answer | Why it's in v1 |
 |---|---|---|---|---|
 | `preimage` | x with `transientHash(x) = target` | target | x | Smallest circuit, used by the spike |
-| `factor` | p, q > 1 with `p × q = N` | N (below 2^128), in the same `target` slot | p, q, cast to 64-bit integers | The classic ZKCP demo. Built: the casts stop fake factors that only multiply to N modulo the field |
-| `signed-record` | An issuer-signed record whose field f ≥ X | issuer key, f (0 to 3), X | Record and signature | Real data-marketplace use. Built: zk-loan's Schnorr module verifies the signature in-circuit, and f is compared as a 64-bit integer. Any record the issuer signed qualifies, so binding it to a subject is the issuer's job |
+| `factor` | p, q > 1 with `p × q = N` | N (4 to 2^128 − 1, range-checked at post time), in the same `target` slot | p (smaller, 64-bit) and q (128-bit) | The classic ZKCP demo. Built: the product stays below 2^192, so fake factors that only multiply to N modulo the field fail, and every factorisation of a valid N can be submitted |
+| `signed-record` | An issuer-signed record of a given type whose field f ≥ X | issuer key, schema tag, f (1 to 3), X | Record and signature | Real data-marketplace use. Built: zk-loan's Schnorr module verifies the signature in-circuit, `record[0]` must equal the bounty's schema tag so signatures made for other purposes don't qualify, and f is compared as a 64-bit integer. Binding a record to a subject is the issuer's job |
 
 Rule from Q1: checkers use `transientHash` wherever they can. A SHA-256 (`persistentHash`)
 checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slower to prove.
@@ -573,6 +584,7 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q9 | `JubjubPoint` and vectors inside ledger map values | ✅ Answered | Stored in `Bounty` and `Delivery` structs, read back and decrypted in the runtime. [Results](spike/q11-full-submit/RESULTS.md) |
 | Q10 | Which prover may a user's wallet use? | 🔬 Open | Some wallets (1AM) can prove on a hosted service, which would send the answer off the device. Decide what the app requires and whether to warn |
 | Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 11 s to prove on an idle runner; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
+| Q12 | Can a solver's coin be zero-value? | 🔬 Open | Today a solver must already hold some of the reward token, because the coin they bring must have value. Its secret nonce is what gives the payout its privacy, so a zero-value coin would do, if zswap accepts it. Needs a devnet run |
 
 ## 19. Build plan (tentative)
 

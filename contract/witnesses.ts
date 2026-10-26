@@ -19,6 +19,10 @@ export type BountyPrivateState = {
   answer: bigint[];
   // For bounty_signed_record: the issuer's signature over `answer`.
   signature: SchnorrSignature;
+  // Optional: the poster's key seed (see keys.ts). Never read by a circuit;
+  // kept here so a backup of the private state also backs up the poster's
+  // ability to decrypt deliveries.
+  posterSeed?: Uint8Array;
 };
 
 export const NO_ANSWER: bigint[] = [0n, 0n, 0n, 0n];
@@ -43,10 +47,10 @@ const TWO_248 = 1n << 248n;
 type Ctx<PS> = WitnessContext<unknown, PS>;
 
 export const bountyWitnesses = {
-  localSecretKey: <PS extends BountyPrivateState>({ privateState }: Ctx<PS>): [PS, Uint8Array] => [
-    privateState,
-    privateState.sk,
-  ],
+  localSecretKey: <PS extends BountyPrivateState>({ privateState }: Ctx<PS>): [PS, Uint8Array] => {
+    if (privateState.sk.length !== 32) throw new Error('The secret key must be 32 bytes');
+    return [privateState, privateState.sk];
+  },
 
   answer: <PS extends BountyPrivateState>({ privateState }: Ctx<PS>): [PS, bigint[]] => [
     privateState,

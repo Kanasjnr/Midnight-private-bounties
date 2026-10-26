@@ -20,7 +20,7 @@ import "stream_cipher" prefix Cipher_;
 export enum Status { OPEN, SOLVED, REFUNDED }
 
 export struct Bounty {
-  poster: Bytes<32>;        // per-deployment pseudonym, not the wallet
+  poster: Bytes<32>;        // per-bounty pseudonym, not the wallet
   posterPk: JubjubPoint;    // the poster's encryption key, b·G
   target: Field;            // the checker's public parameter
   deadline: Uint<64>;       // block time, seconds since the Unix epoch
@@ -84,11 +84,12 @@ export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: Jub
   const bountyId = disclose(id);
   assert(!bounties.member(bountyId), "Bounty already exists");
   Deadline_assertOpen(disclose(deadline));
+  Ecdh_assertValidPublicKey(disclose(posterPk));
 
   Escrow_receiveFresh(reward, rewardColor);
   escrows.insertCoin(bountyId, disclose(reward), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
   bounties.insert(bountyId, Bounty {
-    poster: disclose(Pseudonym_derive(pad(32, "bounty:poster"), localSecretKey())),
+    poster: disclose(Pseudonym_derive(pad(32, "bounty:poster"), bountyId, localSecretKey())),
     posterPk: disclose(posterPk),
     target: disclose(target),
     deadline: disclose(deadline),
@@ -131,7 +132,7 @@ export circuit refund(id: Bytes<32>): [] {
   assert(bounties.member(bountyId), "No such bounty");
   const b = bounties.lookup(bountyId);
   assert(b.status == Status.OPEN, "Bounty is closed");
-  assert(b.poster == disclose(Pseudonym_derive(pad(32, "bounty:poster"), localSecretKey())),
+  assert(b.poster == disclose(Pseudonym_derive(pad(32, "bounty:poster"), bountyId, localSecretKey())),
          "Only the poster can refund");
   Deadline_assertExpired(b.deadline);
 

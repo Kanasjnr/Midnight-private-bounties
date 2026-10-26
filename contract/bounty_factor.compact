@@ -6,7 +6,7 @@
 // reward is paid to the solver. Only the poster can decrypt. After the
 // deadline, an unsolved bounty's reward goes back to the poster.
 //
-// The answer is [p, q, unused, unused]. N is stored in the bounty's `target`
+// The answer is [p, q, unused, unused], smaller factor first. N is stored in the bounty's `target`
 // field, so this file differs from bounty_preimage.compact only in its
 // checker and off-chain helpers.
 //
@@ -24,9 +24,9 @@ import "stream_cipher" prefix Cipher_;
 export enum Status { OPEN, SOLVED, REFUNDED }
 
 export struct Bounty {
-  poster: Bytes<32>;        // per-deployment pseudonym, not the wallet
+  poster: Bytes<32>;        // per-bounty pseudonym, not the wallet
   posterPk: JubjubPoint;    // the poster's encryption key, b·G
-  target: Field;            // N, the number to factor (below 2^128)
+  target: Field;            // N, the number to factor (4 to 2^128 - 1)
   deadline: Uint<64>;       // block time, seconds since the Unix epoch
   status: Status;
 }
@@ -56,12 +56,14 @@ constructor(color: Bytes<32>) {
   rewardColor = disclose(color);
 }
 
-// The checker for this template. The casts range-check p and q to 64 bits, so
-// p * q is below 2^128 and can't wrap around the field: only true integer
-// factors of N pass. Both must be above 1, which rules out 1 * N.
+// The checker for this template. The casts range-check p to 64 bits and q
+// to 128, so p * q is below 2^192 and can't wrap around the field: only true
+// integer factors of N pass. Every N below 2^128 has its smaller factor below
+// 2^64, so give the smaller factor first. Both must be above 1, which rules
+// out 1 * N.
 pure circuit passes(m: Vector<4, Field>, target: Field): Boolean {
   const p = m[0] as Uint<64>;
-  const q = m[1] as Uint<64>;
+  const q = m[1] as Uint<128>;
   return p > 1 && q > 1 && (p * q) as Field == target;
 }
 
@@ -88,11 +90,14 @@ export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: Jub
   const bountyId = disclose(id);
   assert(!bounties.member(bountyId), "Bounty already exists");
   Deadline_assertOpen(disclose(deadline));
+  Ecdh_assertValidPublicKey(disclose(posterPk));
+  // N must fit the checker's bounds: the cast range-checks it to 128 bits.
+  assert(disclose(target) as Uint<128> >= 4, "N must be at least 4");
 
   Escrow_receiveFresh(reward, rewardColor);
   escrows.insertCoin(bountyId, disclose(reward), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
   bounties.insert(bountyId, Bounty {
-    poster: disclose(Pseudonym_derive(pad(32, "bounty:poster"), localSecretKey())),
+    poster: disclose(Pseudonym_derive(pad(32, "bounty:poster"), bountyId, localSecretKey())),
     posterPk: disclose(posterPk),
     target: disclose(target),
     deadline: disclose(deadline),
@@ -135,7 +140,7 @@ export circuit refund(id: Bytes<32>): [] {
   assert(bounties.member(bountyId), "No such bounty");
   const b = bounties.lookup(bountyId);
   assert(b.status == Status.OPEN, "Bounty is closed");
-  assert(b.poster == disclose(Pseudonym_derive(pad(32, "bounty:poster"), localSecretKey())),
+  assert(b.poster == disclose(Pseudonym_derive(pad(32, "bounty:poster"), bountyId, localSecretKey())),
          "Only the poster can refund");
   Deadline_assertExpired(b.deadline);
 
