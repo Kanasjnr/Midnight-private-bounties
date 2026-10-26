@@ -7,16 +7,11 @@ name: Spike benchmarks
 # lockfile, and one `.compact` contract runs here automatically. The contract
 # compiles into `managed/`, which is where the benchmark reads its keys. Adding a
 # spike needs no change to this file.
+#
+# Runs once per commit on PRs into next-release and main (open a draft PR for
+# early feedback), or by hand.
 
 on:
-  push:
-    branches: [spike]
-    paths:
-      - 'spike/*/bench.mjs'
-      - 'spike/*/*.compact'
-      - 'spike/*/package.json'
-      - 'spike/*/package-lock.json'
-      - '.github/workflows/spike-bench.yml'
   # PRs into next-release and main run every time, with no path filter, so the
   # summary job below always reports and can be a required status check.
   pull_request:
@@ -27,7 +22,7 @@ permissions: {}
 
 concurrency:
   group: spike-bench-${{ github.ref }}
-  # A new commit on a PR supersedes the run for the old one; pushes to spike queue.
+  # A new commit on a PR supersedes the run for the old one.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -58,7 +53,7 @@ jobs:
     needs: find
     if: needs.find.outputs.spikes != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     permissions:
       contents: read
     strategy:

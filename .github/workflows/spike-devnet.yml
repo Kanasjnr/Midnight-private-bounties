@@ -5,16 +5,15 @@ name: Spike on devnet
 #
 # Convention: a spike folder with a `harness/` subfolder (laid out like a
 # midnight-examples example, with its own unique package name) runs here
-# automatically. Adding a spike needs no change to this file. Each harness runs
-# on its own runner, inside a checkout of midnight-examples pinned below, the
-# same way that repo's CI runs every example.
+# automatically. Adding a spike needs no change to this file. Each test file in
+# `harness/src/test/` gets its own runner and its own devnet, in parallel, inside
+# a checkout of midnight-examples pinned below, the same way that repo's CI runs
+# every example.
+#
+# Runs once per commit on PRs into next-release and main (open a draft PR for
+# early feedback), or by hand.
 
 on:
-  push:
-    branches: [spike]
-    paths:
-      - 'spike/*/harness/**'
-      - '.github/workflows/spike-devnet.yml'
   # PRs into next-release and main run every time, with no path filter, so the
   # summary job below always reports and can be a required status check.
   pull_request:
@@ -25,7 +24,7 @@ permissions: {}
 
 concurrency:
   group: spike-devnet-${{ github.ref }}
-  # A new commit on a PR supersedes the run for the old one; pushes to spike queue.
+  # A new commit on a PR supersedes the run for the old one.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -33,41 +32,43 @@ env:
 
 jobs:
   find:
-    name: Find spike harnesses
+    name: Find spike harness tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
     outputs:
-      spikes: ${{ steps.list.outputs.spikes }}
+      matrix: ${{ steps.list.outputs.matrix }}
     steps:
       - name: Check out this repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  #v7.0.1
         with:
           persist-credentials: false
 
-      - name: List spike folders that have a harness
+      - name: List every test file in every spike harness
         id: list
         run: |
-          spikes=$(find spike -mindepth 2 -maxdepth 2 -type d -name harness \
-            | sed 's|^spike/||; s|/harness$||' | sort | jq -R . | jq -cs .)
-          echo "Found: $spikes"
-          echo "spikes=$spikes" >> "$GITHUB_OUTPUT"
+          matrix=$(find spike -path 'spike/*/harness/src/test/*.test.ts' -not -name '*.sim.test.ts' \
+            | sort \
+            | jq -R 'capture("^spike/(?<spike>[^/]+)/harness/(?<test>src/test/(?<name>[^/]+)\\.test\\.ts)$")' \
+            | jq -cs '{include: .}')
+          echo "Found: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   devnet:
-    name: ${{ matrix.spike }} on devnet
+    name: ${{ matrix.spike }} / ${{ matrix.name }} on devnet
     needs: find
-    if: needs.find.outputs.spikes != '[]'
+    if: needs.find.outputs.matrix != '{"include":[]}'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 45
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        spike: ${{ fromJSON(needs.find.outputs.spikes) }}
+      matrix: ${{ fromJSON(needs.find.outputs.matrix) }}
     env:
       SPIKE: ${{ matrix.spike }}
+      TEST: ${{ matrix.test }}
       HARNESS: examples-repo/examples/spike-${{ matrix.spike }}
     steps:
       - name: Check out this repo
@@ -130,7 +131,7 @@ jobs:
         working-directory: ${{ env.HARNESS }}
         run: |
           set -o pipefail
-          yarn test:local 2>&1 | tee spike-run.log
+          yarn test:local "$TEST" 2>&1 | tee spike-run.log
 
       - name: Collect service logs on failure
         if: failure()
@@ -146,7 +147,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  #v7.0.2
         with:
-          name: spike-devnet-results-${{ matrix.spike }}
+          name: spike-devnet-results-${{ matrix.spike }}-${{ matrix.name }}
           path: |
             ${{ env.HARNESS }}/*-results.json
             ${{ env.HARNESS }}/spike-run.log

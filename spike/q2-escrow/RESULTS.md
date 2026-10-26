@@ -158,6 +158,9 @@ applies. That is our reading of the error; the node doesn't say which spend fail
 
 **Q3b: pass.** The one-transaction payout is as private as the two-step one.
 
+Since this run, `escrow.test.ts` no longer includes B4 and B5: B7 and B6 supersede them. Their
+results above stay as the record.
+
 **Q5: answered.** Two valid submits racing on chain: exactly one wins, and the loser's transaction
 is rejected whole, so their coin stays in their wallet. Together with the client-side rejections
 above, a failing submit leaves no partial state.
