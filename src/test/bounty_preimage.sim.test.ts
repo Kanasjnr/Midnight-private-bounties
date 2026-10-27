@@ -102,7 +102,7 @@ describe('bounty_preimage (in memory)', () => {
       const soon = nowSec() + 3600n;
       expectRejects(() => f.asPoster().call('postBounty', id, freshCoin(REWARD), pk, f.target, soon), 'Bounty already exists');
       expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD, otherColor), pk, f.target, soon), 'Wrong token');
-      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(0n), pk, f.target, soon), 'Coin has no value');
+      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(0n), pk, f.target, soon), 'Reward has no value');
       expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), pk, f.target, nowSec() - 1n), 'Deadline has passed');
     });
   });
@@ -153,6 +153,15 @@ describe('bounty_preimage (in memory)', () => {
       expect(d.c).not.toEqual(f.answer);
       expect(pureCircuits.decrypt(d, f.posterKey, id)).toEqual(f.answer);
       expect(pureCircuits.decrypt(d, f.posterKey + 1n, id)).not.toEqual(f.answer);
+    });
+
+    it('pays a solver who brings a zero-value coin (spike Q12)', () => {
+      const f = setup();
+      const { id } = f.post();
+      f.asSolver().call('submit', id, freshCoin(0n));
+      expect(f.sim.ledger().bounties.lookup(id).status).toEqual(Status.SOLVED);
+      // The payout is the reward alone: the solver's coin added nothing.
+      expect(f.paid(SOLVER_PK, REWARD)).toHaveLength(1);
     });
 
     it('uses a fresh key exchange every time', () => {

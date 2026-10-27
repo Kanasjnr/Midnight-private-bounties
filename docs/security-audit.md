@@ -27,7 +27,7 @@ witnesses and issuer signing helper. Compact 0.31.1, language version 0.23.
 | S1 | Suggestion | Schnorr challenge reduction not strictly unique | Fixed |
 | S2 | Suggestion | Encryption context keeps 248 of the bounty ID's 256 bits | Documented (harmless) |
 | S3 | Suggestion | Witness hardening | Fixed |
-| S4 | Suggestion | Solvers must already hold the reward token | Open question Q12 |
+| S4 | Suggestion | Solvers must already hold the reward token | Fixed: spike Q12 showed a zero-value coin works, and the contracts accept one |
 | S5 | Suggestion | Bounty ID squatting | Documented (app retries) |
 | S6 | Suggestion | Test a submit that lands after the deadline | Fixed (devnet test D5) |
 
@@ -96,8 +96,10 @@ the same issuer, no longer qualifies. **Test:** both are rejected as the wrong r
 - **S3:** the identity-secret witness checks that `sk` is 32 bytes, and the private state can hold
   the poster's key seed so backups cover it. Clearing the answer from private state after a
   confirmed submit is for the app.
-- **S4:** a solver currently needs some of the reward token to bring their own coin. Whether a
-  zero-value coin works is open question Q12, which needs a devnet run.
+- **S4:** a solver no longer needs any of the reward token. Spike Q12 showed on a devnet that a
+  solver holding none of it can submit with a zero-value coin, be paid in full, and keep the
+  payout private. The escrow module now accepts a zero-value coin, and `postBounty` checks the
+  reward is non-zero itself. **Test:** a solver with a zero-value coin is paid exactly the reward.
 - **S6:** devnet test D5 sends a submit proven before the deadline that lands after it. It must be
   rejected whole, with the bounty still open and the solver's balance unchanged.
 
