@@ -585,7 +585,7 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q9 | `JubjubPoint` and vectors inside ledger map values | ✅ Answered | Stored in `Bounty` and `Delivery` structs, read back and decrypted in the runtime. [Results](spike/q11-full-submit/RESULTS.md) |
 | Q10 | Which prover may a user's wallet use? | ✅ Decided | Every circuit has secret inputs, so the app proves on a local proof server by default. Wallet proving is an opt-in, with a warning that the wallet, and any hosted prover it uses, sees the proof's inputs (on the solve screen, the answer). It isn't blocked, so users without a local proof server aren't shut out |
 | Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 11 s to prove on an idle runner; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
-| Q12 | Can a solver's coin be zero-value? | 🔬 Open | Today a solver must already hold some of the reward token, because the coin they bring must have value. Its secret nonce is what gives the payout its privacy, so a zero-value coin would do, if zswap accepts it. Needs a devnet run |
+| Q12 | Can a solver's coin be zero-value? | ✅ Answered | Yes: a solver holding none of the reward token submitted with a zero-value coin, was paid in full, and the payout passed the Q2 leak checks. Solvers don't need the token. The contracts still require a non-zero coin until they are changed to allow it for the solver. [Results](spike/q2-escrow/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 
