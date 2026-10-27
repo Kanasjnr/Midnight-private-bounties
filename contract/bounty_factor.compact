@@ -94,6 +94,7 @@ export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: Jub
   // N must fit the checker's bounds: the cast range-checks it to 128 bits.
   assert(disclose(target) as Uint<128> >= 4, "N must be at least 4");
 
+  assert(disclose(reward.value) > 0, "Reward has no value");
   Escrow_receiveFresh(reward, rewardColor);
   escrows.insertCoin(bountyId, disclose(reward), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
   bounties.insert(bountyId, Bounty {
