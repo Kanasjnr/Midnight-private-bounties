@@ -165,3 +165,21 @@ results above stay as the record.
 is rejected whole, so their coin stays in their wallet. Together with the client-side rejections
 above, a failing submit leaves no partial state.
 
+## Follow-up: Q12 on GitHub (`zerocoin.test.ts`)
+
+Run by the `Spike on devnet` workflow (run 40537836490, commit `f62137e`). A fresh deployment
+mints a fresh test token, so the solver held none of it.
+
+| Check | Result | Observed |
+|---|---|---|
+| Solver's reward-token balance before | — | 0 |
+| `submitOneTx` with a zero-value coin | pass | succeeded in 65.4 s, status SOLVED |
+| Solver paid the full reward | pass | balance 0 to 100, payout coin found |
+| Zero-value coin's nonce absent from public state | pass | not found |
+| Payout nonce absent, and different from the escrow nonce | pass | not found; different |
+| Solver's wallet coin key absent | pass | not found |
+
+**Q12: yes.** Zswap and the wallet both accept a zero-value coin, and the payout is as private as
+with a valued one, because what protects it is the coin's secret nonce, not its value. Solvers
+don't need to hold the reward token.
+
