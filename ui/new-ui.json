@@ -1,0 +1,4 @@
+{
+  "contract": "bounty_preimage",
+  "privateState": "persistent"
+}
