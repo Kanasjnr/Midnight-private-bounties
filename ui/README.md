@@ -79,7 +79,8 @@ wallet has no DUST.
 
 ## TODO: end-to-end verification with a wallet
 
-Not yet run. Everything below needs a human to approve wallet prompts. What *has* been
+Partly run: the ticked items passed on Preview with 1AM on 2026-10-28 (see
+`spike/q6-wallet/RESULTS.md`). Everything below needs a human to approve wallet prompts. What *has* been
 verified is in `templates/ui/VERIFIED.md`, generated from this UI's
 `verification.json`. When you run these, tick them off. Once all pass, set
 `walletDeploy` and `walletCalls` to `verified` in `verification.json` (with the
@@ -91,26 +92,29 @@ both wallet accounts on Preview. The proving settings show **Local proof
 server** on a first visit. Account P posts, account S solves; both need DUST,
 and S needs nothing else.
 
-- [ ] **Unlock:** P connects and sets a passphrase; the panel appears. A weak
-      passphrase is refused with the policy reason.
-- [ ] **Token:** P deploys the test token, then the bounty contract, then
+- [x] **Unlock:** P connects and sets a passphrase; the panel appears.
+- [ ] A weak passphrase is refused with the policy reason.
+- [x] **Token:** P deploys the test token, then the bounty contract, then
       mints 1,000 tokens. They show under "Your balances".
-- [ ] **Post:** P posts a bounty with a reward of 100 and a 60-minute
+- [x] **Post:** P posts a bounty with a reward of 100 and a 60-minute
       deadline. The wallet funds the reward from the minted tokens; P's
       balance drops by 100 and the board shows it OPEN, "posted by you".
-- [ ] **Short deadline:** P posts a second bounty with a 3-minute deadline.
-- [ ] **Join:** S joins by address (a second wallet, profile or account) and
+- [x] **Short deadline:** P posts a bounty with a short deadline (run with 20 minutes).
+- [x] **Join:** S joins by address (a second wallet, profile or account) and
       sets its own passphrase. The board shows both bounties, neither as S's.
-- [ ] **Wrong answer:** S types a wrong answer; Solve stays disabled with
+- [x] **Wrong answer:** S types a wrong answer; Solve stays disabled with
       "Wrong answer", and nothing is sent to the wallet.
-- [ ] **Solve:** S solves the first bounty. One wallet approval; the board
+- [x] **Solve:** S solves the first bounty. One wallet approval; the board
       shows it SOLVED, and S's balance gains exactly 100 once the wallet
       syncs, though S held none of the token before.
-- [ ] **Decrypt:** P decrypts and reads S's answer. S sees no decrypt button.
-- [ ] **Refund:** once the 3-minute deadline passes, S's Solve is refused and
-      P refunds the second bounty; P's balance gains 100.
-- [ ] **Reload:** P reloads, unlocks with the same passphrase, re-joins, and
-      can still decrypt. A wrong passphrase is refused.
+- [x] **Decrypt:** P decrypts and reads S's answer. S sees no decrypt button.
+- [x] **Refund:** once the short deadline passes, P refunds that bounty; P's
+      balance gains 100.
+- [ ] After the deadline, S's Solve is refused.
+- [x] **Re-join:** after switching accounts, P re-joins and can still refund and
+      decrypt.
+- [ ] **Reload:** P reloads, unlocks with the same passphrase, and can still
+      decrypt. A wrong passphrase is refused.
 - [ ] **Wallet proving:** with a throwaway answer, one post and one solve with
       **Wallet proves** selected (the warning shows).
 - [ ] **Other wallet:** the post, solve and refund with the other wallet (Lace

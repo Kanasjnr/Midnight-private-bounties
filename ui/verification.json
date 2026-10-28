@@ -1,13 +1,19 @@
 {
   "steps": {
     "browser": {
-      "status": "not-run"
+      "status": "verified",
+      "date": "2026-10-28",
+      "notes": "The page ran in Chrome: the WASM ledger and the compiled circuits ran in it (the pure answer check, postBounty/submit/refund built locally, decryption), and the dev server served every key and zkir file byte for byte (the submit prover key is 21.6 MB). The persistent store unlocked with a generated passphrase for each of two wallet accounts."
     },
     "walletDeploy": {
-      "status": "not-run"
+      "status": "verified",
+      "date": "2026-10-28",
+      "notes": "Preview (node 1.0.400-87c0fbdb, runtime specVersion 1000300) with the 1AM wallet and the local proof server (8.1.0). Deployed the test token adf95575ae5096c53dedcd371afb938b48232a7b287c7f5bde9a3284096e5850, then the bounty contract 04713ab8f8e99c95d87889a11b239aeb5acccc5f8a192f2d33a96838092fd32e (tx 0034d1ef08a069e47c42571582d04674e1da0c0f1ff99c7041a9c2d3742c499f4f, block 1491370), read back from the Preview indexer with status SUCCESS."
     },
     "walletCalls": {
-      "status": "not-run"
+      "status": "partial",
+      "date": "2026-10-28",
+      "notes": "Preview with 1AM (two accounts) and the local proof server; every tx read back from the indexer with status SUCCESS. mint (block 1491409), postBounty with the wallet funding a fresh 100-token reward coin from the poster's shielded tokens (block 1491466), refund after the deadline (block 1491802), a second postBounty (block 1491825), and submit from an account holding none of the token, with a zero-value coin, paying it exactly 100 (block 1491862); then the poster decrypted the answer in the page. A wrong answer was stopped by the page before proving. The first mint and the first postBounty failed inside the wallet (balancing, then submission) and passed on retry. Not run: Lace, wallet proving (1AM's provider setup failed with InternalError), a wrong passphrase, a full reload. See spike/q6-wallet/RESULTS.md."
     },
     "preprod": {
       "status": "not-run"
