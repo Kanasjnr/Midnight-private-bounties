@@ -99,6 +99,7 @@ export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: Jub
   Ecdh_assertValidPublicKey(disclose(posterPk));
   Ecdh_assertValidPublicKey(disclose(issuerPk));
 
+  assert(disclose(reward.value) > 0, "Reward has no value");
   Escrow_receiveFresh(reward, rewardColor);
   escrows.insertCoin(bountyId, disclose(reward), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
   bounties.insert(bountyId, Bounty {

@@ -86,6 +86,7 @@ export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: Jub
   Deadline_assertOpen(disclose(deadline));
   Ecdh_assertValidPublicKey(disclose(posterPk));
 
+  assert(disclose(reward.value) > 0, "Reward has no value");
   Escrow_receiveFresh(reward, rewardColor);
   escrows.insertCoin(bountyId, disclose(reward), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
   bounties.insert(bountyId, Bounty {
@@ -98,8 +99,9 @@ export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: Jub
 }
 
 // One transaction for the solver: the checker, the encrypted delivery and the
-// payout. `stake` is a fresh coin of the solver's own; it is merged first, so
-// the payout (reward plus the stake back) can't be linked to the solver.
+// payout. `stake` is a fresh coin of the solver's own, and may be worth zero;
+// it is merged first, so the payout (reward plus the stake back) can't be
+// linked to the solver.
 export circuit submit(id: Bytes<32>, stake: ShieldedCoinInfo): [] {
   const bountyId = disclose(id);
   assert(bounties.member(bountyId), "No such bounty");

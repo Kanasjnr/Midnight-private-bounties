@@ -1,7 +1,7 @@
 # Private Bounties on Midnight: Architecture
 
-**Status:** draft v0.5, 2026-10-26. Updated with the week-1 spike results (Q1 to Q5, Q3b, Q7, Q9
-and Q11 answered; see section 18) and the fixes from the first security audit
+**Status:** draft v0.6, 2026-10-28. Updated with the spike results (every question in section 18
+is answered or decided; Q6 still needs a Lace run) and the fixes from the first security audit
 ([report](docs/security-audit.md)). Anything still marked 🔬 is unproven. Code blocks
 are **pseudocode, not Compact**. Midnight-specific facts were checked against the Compact
 standard library at `compactc-v0.31.1` and against
@@ -85,6 +85,8 @@ This follows the same wiring as the zk-loan example UI: `FetchZkConfigProvider`,
 supplying the endpoints.
 **One difference:** zk-loan keeps private state **in memory**. We can't, because the poster's
 decryption key has to survive a reload, so we need a persistent, encrypted browser store (Q8).
+The UI template's store does that: midnight-js's LevelDB provider on IndexedDB, encrypted under a
+passphrase, one store per wallet account.
 
 ### Repository layout
 
@@ -154,7 +156,7 @@ and `threshold: Uint<64>`. In every template the payload is four field elements
 | Circuit | Caller | What the proof shows | Public effects |
 |---|---|---|---|
 | `postBounty` | Poster | Poster pseudonym comes from their secret and this bounty's ID; the coin has the reward color and a non-zero value; the deadline is still ahead; the poster's key (and in signed-record, the issuer's) is on the curve, in the prime-order subgroup and not the identity | Bounty record and escrow coin |
-| `submit` | Solver | Checker passes, ECDH is correct, c encrypts the answer, before the deadline. Receives the solver's fresh coin and merges it first | `E`, `c`, status `SOLVED`, one shielded payout: reward plus the solver's coin |
+| `submit` | Solver | Checker passes, ECDH is correct, c encrypts the answer, before the deadline. Receives the solver's fresh coin, which may be worth zero, and merges it first | `E`, `c`, status `SOLVED`, one shielded payout: reward plus the solver's coin |
 | `refund` | Poster | Pseudonym matches; deadline passed; still `OPEN` | Status `REFUNDED`, escrow returned |
 | `answerHash`, `checkAnswer` (pure) | Browser | No proof: runs in JS | None: builds a bounty's target, and pre-checks an answer before paying for a proof |
 | `posterPublicKey`, `decrypt` (pure) | Browser | No proof: runs in JS | None: the poster's key and decryption, with the exact circuit math |
@@ -326,7 +328,7 @@ flowchart TD
 | Post a bounty | Form, then a `postBounty` transaction | DApp Connector, proof server |
 | "What goes public" review | Static, per template | Selective disclosure, made visible |
 | Bounty detail | Ledger state | Public params, deadline countdown from block time |
-| Solve | Pure checker, then one `submit`, with proving progress shown (about 11 s on an ordinary machine) | Local proving, witnesses, shielded coins |
+| Solve | Pure checker, then one `submit`, with progress shown: proving alone takes about 11 s on an idle machine, and the whole call took 2.5 minutes in the Q6 browser run on a loaded laptop, wallet approval included | Local proving, witnesses, shielded coins |
 | My bounties / inbox | Ledger state and private state | Private state store, pure-circuit decryption |
 | Refund | `refund` transaction | Block time |
 
@@ -532,12 +534,13 @@ flowchart LR
 | Payout traced to the solver's wallet | Solver's fresh coin merged first (section 9) |
 | Escrow traced to the poster's wallet | The app always builds the escrow as a fresh coin with a random nonce, never a wallet coin's nonce |
 | Concurrent calls from one user | Calls run one at a time, with one private-state store per user (two at once collided on the store's lock in Q2) |
-| Small answer space | The checker itself can leak the answer (a 4-digit PIN can be brute-forced). The UI warns, and templates avoid it |
+| Small answer space | The checker itself can leak the answer (a 4-digit PIN can be brute-forced). In `preimage` the target is the answer's public hash, so a short answer can be found by hashing guesses, and the same answer posted twice shows the same target (seen in Q6). The UI warns about short and reused answers, and templates avoid it |
 | Field wraparound in a checker | Checkers use bounded `Uint` arithmetic (`p × q = N` with no modular wrap) |
 | Invalid or low-order `posterPk` or `issuerPk` | `postBounty` rejects them: the proof checks the key is on the curve and in the prime-order subgroup, and an assert rejects the identity point, which would make every shared key public |
 | Biased issuer signatures | `signing.ts` draws Schnorr nonces uniformly modulo the subgroup order. An earlier version drew them from 248 bits, which leaks enough to recover an issuer's key from roughly a hundred signatures |
 | A signature made for another app | Signed-record bounties pin a schema tag in `record[0]`, so a zk-loan attestation from the same issuer doesn't qualify |
-| A submit that lands after the deadline | Rejected whole, with the solver's coin left in their wallet (devnet test D5). The UI warns near the deadline, because a submit takes about a minute to prove and land |
+| A submit that lands after the deadline | Rejected whole, with the solver's coin left in their wallet (devnet test D5). The UI warns near the deadline, because a submit takes minutes to prove, approve and land (2.5 minutes in the Q6 browser run) |
+| A wallet or hosted prover sees the proof's inputs | The app proves locally by default. Choosing wallet proving shows a warning first, because the wallet, or the hosted service it may use, sees the secret inputs: the poster's identity secret, or the solver's answer and coin (Q10) |
 | Bounty ID squatting | Someone who sees a pending ID can post first with the same ID ("Bounty already exists"). Denial of service only; the app retries with a fresh ID |
 | Poster loses key `b` | An encrypted backup or export of the private state |
 | `transientHash` changes at a hard fork | The poster's app decrypts as soon as a bounty is solved, keeps the plaintext, and pins its runtime version |
@@ -578,13 +581,13 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q3b | Does the one-transaction payout pass the same leak check as Q2? | ✅ Answered | Yes: solver's coin, payout nonce, wallet keys and secret never public. [Results](spike/q2-escrow/RESULTS.md) |
 | Q4 | Do pure circuits off-chain reproduce the circuit's `ecMul` and `transientHash`? | ✅ Answered | Poster decrypts exactly; a wrong key doesn't (JS runtime). [Results](spike/q1-proof-size/RESULTS.md) |
 | Q5 | Does a failing `submit` leave no partial state? | ✅ Answered | Bad calls are rejected before proving. Racing submits: one wins, the other is rejected whole and the loser keeps their coin. [Results](spike/q2-escrow/RESULTS.md) |
-| Q6 | Can the wallet (Lace, 1AM) balance a transaction that pays in and receives a payout? | 🔬 Open | Run `submit` through the DApp Connector |
+| Q6 | Can the wallet (Lace, 1AM) balance a transaction that pays in and receives a payout? | ✅ Yes with 1AM | On Preview, 1AM funded the reward escrow from the poster's shielded tokens, and a solver holding none of the token submitted with a zero-value coin and received the reward. Refund and in-browser decryption worked too. Two first attempts failed inside the wallet and passed on retry, so the UI offers a retry. Lace not run yet. [Results](spike/q6-wallet/RESULTS.md) |
 | Q7 | Block time units and drift | ✅ Answered | Unix seconds; deadline checks enforced on chain. [Results](spike/q2-escrow/RESULTS.md) |
-| Q8 | Persistent, encrypted browser private state | 🔬 Open | Prototype a store that survives a reload |
+| Q8 | Persistent, encrypted browser private state | ✅ Answered | The UI template's store (midnight-js's LevelDB provider on IndexedDB, passphrase-encrypted, per wallet account) kept the poster's identity secret and key seed across re-joins on Preview: refund and decrypt both worked afterwards. midnight-examples checked the reload round trip and wrong-passphrase refusal for the same store. [Results](spike/q6-wallet/RESULTS.md) |
 | Q9 | `JubjubPoint` and vectors inside ledger map values | ✅ Answered | Stored in `Bounty` and `Delivery` structs, read back and decrypted in the runtime. [Results](spike/q11-full-submit/RESULTS.md) |
-| Q10 | Which prover may a user's wallet use? | 🔬 Open | Some wallets (1AM) can prove on a hosted service, which would send the answer off the device. Decide what the app requires and whether to warn |
+| Q10 | Which prover may a user's wallet use? | ✅ Decided | Every circuit has secret inputs, so the app proves on a local proof server by default. Wallet proving is an opt-in, with a warning that the wallet, and any hosted prover it uses, sees the proof's inputs (on the solve screen, the answer). It isn't blocked, so users without a local proof server aren't shut out |
 | Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 11 s to prove on an idle runner; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
-| Q12 | Can a solver's coin be zero-value? | 🔬 Open | Today a solver must already hold some of the reward token, because the coin they bring must have value. Its secret nonce is what gives the payout its privacy, so a zero-value coin would do, if zswap accepts it. Needs a devnet run |
+| Q12 | Can a solver's coin be zero-value? | ✅ Answered | Yes: a solver holding none of the reward token submitted with a zero-value coin, was paid in full, and the payout passed the Q2 leak checks. Solvers don't need the token, and the contracts accept a zero-value solver coin (the reward must still be non-zero). [Results](spike/q2-escrow/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 

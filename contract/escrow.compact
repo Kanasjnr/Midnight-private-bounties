@@ -15,9 +15,12 @@ module escrow {
   // the form the contract needs to spend it later (mt_index is assigned when
   // the transaction lands). The client must build `coin` with a fresh random
   // nonce, never a wallet coin's nonce, so it points at nobody.
+  //
+  // The coin may be worth zero: a solver's coin is there for its secret nonce,
+  // and zswap and the wallet accept a zero-value coin (spike Q12). Callers
+  // that need value, like a reward, check it themselves.
   export circuit receiveFresh(coin: ShieldedCoinInfo, color: Bytes<32>): QualifiedShieldedCoinInfo {
     assert(disclose(coin.color) == color, "Wrong token");
-    assert(disclose(coin.value) > 0, "Coin has no value");
     receiveShielded(disclose(coin));
     return QualifiedShieldedCoinInfo {
       nonce: coin.nonce, color: coin.color, value: coin.value, mt_index: 0 as Uint<64>

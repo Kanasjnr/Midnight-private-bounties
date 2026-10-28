@@ -76,3 +76,6 @@ export const bountyWitnesses = {
     challengeHash: bigint,
   ): [PS, [bigint, bigint]] => [privateState, [challengeHash / TWO_248, challengeHash % TWO_248]],
 };
+
+// The name midnight-examples' UI generator (`yarn new:ui`) imports.
+export const witnesses = bountyWitnesses;
