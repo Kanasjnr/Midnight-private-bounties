@@ -44,6 +44,8 @@ const config = getConfig();
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
+const TITLE = 'Factor a 62-bit number';
+const DETAILS = 'N is the product of two primes. Send p and q.';
 const P = 2147483647n;
 const Q = 2147483629n;
 const N = P * Q;
@@ -129,7 +131,7 @@ describe(`bounty_factor on ${config.networkId}`, () => {
   it('pays a solver who knows the factors; the poster decrypts them', async () => {
     const id = new Uint8Array(randomBytes(32));
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
-    await call(alice, 'post', 'postBounty', [id, freshCoin(color, REWARD), pure.posterPublicKey(posterKey), N, deadline]);
+    await call(alice, 'post', 'postBounty', [id, freshCoin(color, REWARD), pure.posterPublicKey(posterKey), N, deadline, TITLE, DETAILS]);
 
     await syncWallet(logger, bob.wallet.wallet, 600_000);
     const before = await shieldedBalance(bob.wallet, color);
@@ -140,6 +142,7 @@ describe(`bounty_factor on ${config.networkId}`, () => {
     const s = await alice.prov.publicDataProvider.queryContractState(address);
     const l = bountyFactorLedger(s!.data);
     expect(l.bounties.lookup(id).status).toEqual(Status.SOLVED);
+    expect(l.listings.lookup(id)).toEqual({ title: TITLE, details: DETAILS });
     expect(pure.decrypt(l.deliveries.lookup(id), posterKey, id)).toEqual([P, Q, 0n, 0n]);
   }, LONG);
 });
