@@ -46,6 +46,7 @@ import {
   deployTestToken,
   joinPrivateBounties,
   ledger$,
+  listingError,
   mintTestTokens,
   parseAmount,
   postNewBounty,
@@ -472,24 +473,38 @@ function TokenCard(props: {
 function PostCard(props: { deployment: BountyDeployment; colorHex: string; now: bigint; logged: Logged }) {
   const { deployment, colorHex, now, logged } = props;
   const { providers, contract, address, busy } = deployment;
+  const [title, setTitle] = useState("");
+  const [details, setDetails] = useState("");
   const [answer, setAnswer] = useState("");
   const [reward, setReward] = useState("100");
   const [minutes, setMinutes] = useState("60");
   const parsedReward = parseAmount(reward);
   const parsedMinutes = parseAmount(minutes);
-  const ready = answer.trim().length > 0 && parsedReward !== null && parsedMinutes !== null;
+  const textError = title === "" && details === "" ? null : listingError(title, details);
+  const ready =
+    listingError(title, details) === null && answer.trim().length > 0 && parsedReward !== null && parsedMinutes !== null;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Post a bounty</CardTitle>
         <CardDescription>
-          Only the answer's hash goes on chain, so use something long and hard to guess. The reward
+          The title and question are public. Only the answer's hash goes on chain, so use something
+          long and hard to guess. The reward
           is escrowed in the contract until someone proves they know the answer, or the deadline
           passes and you take it back.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
+        <Input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Title" />
+        <textarea
+          className="min-h-20 rounded-md border bg-transparent px-3 py-2"
+          placeholder="The question"
+          value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          aria-label="Question"
+        />
+        {textError && <p className="text-muted-foreground">{textError}</p>}
         <Input placeholder="The answer (up to 124 bytes)" value={answer} onChange={(e) => setAnswer(e.target.value)} aria-label="Answer" />
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2">
@@ -506,11 +521,15 @@ function PostCard(props: { deployment: BountyDeployment; colorHex: string; now: 
               void logged("post bounty", async () => {
                 if (!contract || !providers || !address || parsedReward === null || parsedMinutes === null) return;
                 const { id, tx } = await postNewBounty(contract, providers, address, {
+                  title,
+                  details,
                   answer,
                   reward: parsedReward,
                   deadline: now + parsedMinutes * 60n,
                   colorHex,
                 });
+                setTitle("");
+                setDetails("");
                 setAnswer("");
                 return {
                   txId: tx.public.txId,
@@ -563,8 +582,9 @@ function BoardCard(props: {
           const decryptError = actionError("decrypt", state, b, now);
           return (
             <div key={b.idHex} className="flex flex-col gap-2 rounded-md border px-3 py-2">
+              <div className="font-medium">{b.title || <code>{short}</code>}</div>
+              {b.details && <p className="whitespace-pre-wrap text-muted-foreground">{b.details}</p>}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                <code>{short}</code>
                 <span className="font-medium">{STATUS_NAMES[b.status]}</span>
                 {b.reward !== null && <span>reward {b.reward.toString()}</span>}
                 <span className="text-muted-foreground">{deadlineText(b, now)}</span>

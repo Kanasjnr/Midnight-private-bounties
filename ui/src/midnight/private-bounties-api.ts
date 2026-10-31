@@ -214,7 +214,7 @@ async function writePrivateState(
 export type CircuitArgs<K extends keyof Contract["provableCircuits"]> =
   Parameters<Contract["provableCircuits"][K]> extends [unknown, ...infer A] ? A : never;
 
-/** Circuit `postBounty(id, reward, posterPk, target, deadline)`. */
+/** Circuit `postBounty(id, reward, posterPk, target, deadline, title, details)`. */
 export async function postBounty(
   contract: PrivateBountiesContract,
   ...args: CircuitArgs<"postBounty">
@@ -238,8 +238,27 @@ export async function refund(
   return contract.callTx.refund(...args);
 }
 
+/** Longest title and question the page accepts. The contract sets no limit; every character is public and paid for. */
+export const TITLE_MAX = 80;
+export const DETAILS_MAX = 1000;
+
+/** Why a title and question can't be posted, or null. Both are trimmed first. */
+export function listingError(title: string, details: string): string | null {
+  const t = title.trim();
+  const d = details.trim();
+  if (t === "") return "Give the bounty a title";
+  if ([...t].length > TITLE_MAX) return `Title is over ${TITLE_MAX} characters`;
+  if (d === "") return "Write the question";
+  if ([...d].length > DETAILS_MAX) return `Question is over ${DETAILS_MAX} characters`;
+  return null;
+}
+
 /** What a poster fills in. `deadline` is in seconds since the Unix epoch (block time). */
 export interface NewBounty {
+  /** Public, shown on the board. */
+  title: string;
+  /** Public: the question the answer must solve. */
+  details: string;
   answer: string;
   reward: bigint;
   deadline: bigint;
@@ -257,6 +276,8 @@ export async function postNewBounty(
   address: ContractAddress,
   input: NewBounty,
 ) {
+  const invalid = listingError(input.title, input.details);
+  if (invalid) throw new Error(invalid);
   const ps = await readPrivateState(providers, address);
   if (!ps?.posterSeed) throw new Error("This browser has no poster seed for this contract: rejoin it first.");
   const answer = encodeAnswer(input.answer);
@@ -269,6 +290,8 @@ export async function postNewBounty(
     pureCircuits.posterPublicKey(key),
     pureCircuits.answerHash(answer),
     input.deadline,
+    input.title.trim(),
+    input.details.trim(),
   );
   return { id, tx };
 }
@@ -372,6 +395,8 @@ export function posterPseudonym(address: ContractAddress, id: Uint8Array, sk: Ui
 export interface BountyView {
   id: Uint8Array;
   idHex: string;
+  title: string;
+  details: string;
   status: Status;
   /** Seconds since the Unix epoch. */
   deadline: bigint;
@@ -390,9 +415,12 @@ export function bountyViews(
 ): BountyView[] {
   const rows: BountyView[] = [];
   for (const [id, b] of state.bounties) {
+    const listing = state.listings.member(id) ? state.listings.lookup(id) : null;
     rows.push({
       id,
       idHex: toHex(id),
+      title: listing?.title ?? "",
+      details: listing?.details ?? "",
       status: b.status,
       deadline: b.deadline,
       target: b.target,

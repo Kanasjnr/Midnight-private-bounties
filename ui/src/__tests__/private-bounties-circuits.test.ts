@@ -37,7 +37,10 @@ import {
   ANSWER_BYTES,
   bountyViews,
   decodeAnswer,
+  DETAILS_MAX,
   encodeAnswer,
+  listingError,
+  TITLE_MAX,
   freshCoin,
   newPrivateState,
   parseAmount,
@@ -62,6 +65,8 @@ const ADDRESS = sampleContractAddress();
 // some contract address.
 const COLOR = tokenColor(sampleContractAddress());
 const REWARD = 100n;
+const TITLE = "Name the ship in the bottle";
+const DETAILS = "What was the ship in the bottle on the mantel called? One word, as on its label. ⛵";
 const ANSWER = "the treasure is under the old oak tree";
 
 const contract = new Contract(witnesses);
@@ -100,7 +105,7 @@ async function post(board: Board, poster: PS, answer = ANSWER, deadline = nowSec
   const id = crypto.getRandomValues(new Uint8Array(32));
   const key = await posterKeyFor(poster.posterSeed!, ADDRESS, id);
   board.call(POSTER_PK, poster, (ctx) =>
-    c.postBounty(ctx, id, freshCoin(COLOR.hex, REWARD), pureCircuits.posterPublicKey(key), pureCircuits.answerHash(encodeAnswer(answer)), deadline),
+    c.postBounty(ctx, id, freshCoin(COLOR.hex, REWARD), pureCircuits.posterPublicKey(key), pureCircuits.answerHash(encodeAnswer(answer)), deadline, TITLE, DETAILS),
   );
   return id;
 }
@@ -156,7 +161,7 @@ describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
     // The board: open, escrowed, and the poster's own (from the pseudonym alone).
     const stored = board.ledger.bounties.lookup(id);
     expect(toHex(posterPseudonym(ADDRESS, id, poster.sk))).toBe(toHex(stored.poster));
-    expect(row(board, id, poster)).toMatchObject({ status: Status.OPEN, reward: REWARD, mine: true });
+    expect(row(board, id, poster)).toMatchObject({ title: TITLE, details: DETAILS, status: Status.OPEN, reward: REWARD, mine: true });
     expect(row(board, id, solver)).toMatchObject({ mine: false });
     expect(row(board, id, null)).toMatchObject({ mine: false });
 
@@ -239,6 +244,16 @@ describe("answer encoding", () => {
     expect(() => decodeAnswer([0xffn << 232n, 0n, 0n, 0n])).toThrow(); // not UTF-8
   });
 
+  it("listingError asks for a title and a question, within the page's limits", () => {
+    expect(listingError(TITLE, DETAILS)).toBeNull();
+    expect(listingError("  ", DETAILS)).toBe("Give the bounty a title");
+    expect(listingError(TITLE, "\n")).toBe("Write the question");
+    // Limits count characters, not bytes or UTF-16 units.
+    expect(listingError("ζ".repeat(TITLE_MAX), "🦊".repeat(DETAILS_MAX))).toBeNull();
+    expect(listingError("x".repeat(TITLE_MAX + 1), DETAILS)).toBe(`Title is over ${TITLE_MAX} characters`);
+    expect(listingError(TITLE, "x".repeat(DETAILS_MAX + 1))).toBe(`Question is over ${DETAILS_MAX} characters`);
+  });
+
   it("parseAmount accepts exactly the positive Uint<64> values", () => {
     expect(parseAmount("1")).toBe(1n);
     expect(parseAmount(((1n << 64n) - 1n).toString())).toBe((1n << 64n) - 1n);
@@ -264,7 +279,7 @@ describe("private-bounties circuit wrappers (types)", () => {
     expectTypeOf<Awaited<ReturnType<typeof postBounty>>>().toEqualTypeOf<
       FinalizedCallTxData<Contract, "postBounty">
     >();
-    expectTypeOf<Parameters<typeof postBounty>["length"]>().toEqualTypeOf<6>();
+    expectTypeOf<Parameters<typeof postBounty>["length"]>().toEqualTypeOf<8>();
     expectTypeOf<Awaited<ReturnType<typeof submit>>>().toEqualTypeOf<
       FinalizedCallTxData<Contract, "submit">
     >();
