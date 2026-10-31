@@ -9,6 +9,8 @@ import { bountyWitnesses, createBountyPrivateState, randomScalar } from '../../c
 
 const REWARD = 100n;
 const STAKE = 10n;
+const TITLE = 'Factor a 62-bit number';
+const DETAILS = 'N is the product of two primes. Send p and q.';
 const POSTER_PK = 'b0'.repeat(32);
 const SOLVER_PK = 'a0'.repeat(32);
 // Two 31-bit primes, and their product.
@@ -50,7 +52,7 @@ function setup(n: bigint = N) {
     coinPublicKey: POSTER_PK,
   });
   const id = rand32();
-  sim.call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(posterKey), n, nowSec() + 3600n);
+  sim.call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(posterKey), n, nowSec() + 3600n, TITLE, DETAILS);
   const submitAs = (answer: bigint[]) => {
     sim.as(SOLVER_PK).privateState = createBountyPrivateState(solverSk, answer);
     return sim.call('submit', id, freshCoin(STAKE));
@@ -65,6 +67,7 @@ describe('bounty_factor (in memory)', () => {
     const l = f.sim.ledger();
     expect(l.bounties.lookup(f.id).status).toEqual(Status.SOLVED);
     expect(l.bounties.lookup(f.id).target).toEqual(N);
+    expect(l.listings.lookup(f.id)).toEqual({ title: TITLE, details: DETAILS });
     const paid = (f.sim.lastContext?.currentZswapLocalState.outputs ?? []).filter(
       (o) => o.recipient.is_left && hex(o.recipient.left.bytes) === SOLVER_PK && o.coinInfo.value === REWARD + STAKE,
     );

@@ -52,6 +52,8 @@ const config = getConfig();
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
+const TITLE = 'Income of at least 3,000';
+const DETAILS = 'A bank statement record signed by the test issuer, with an amount of at least 3,000.';
 const SCHEMA = BigInt('0x' + Buffer.from('pb:bank-statement:v1').toString('hex'));
 const FIELD = 1n; // record[1] holds the amount
 const THRESHOLD = 3000n;
@@ -147,7 +149,7 @@ describe(`bounty_signed_record on ${config.networkId}`, () => {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
     const issuerPk = pure.publicKey(issuerSk);
     await call(alice, 'post', 'postBounty', [
-      id, freshCoin(color, REWARD), pure.publicKey(posterKey), issuerPk, SCHEMA, FIELD, THRESHOLD, deadline,
+      id, freshCoin(color, REWARD), pure.publicKey(posterKey), issuerPk, SCHEMA, FIELD, THRESHOLD, deadline, TITLE, DETAILS,
     ]);
     // [schema tag, amount, issued at, subject], signed by the issuer off-chain.
     const record = [SCHEMA, 5000n, BigInt(Math.floor(Date.now() / 1000)), randomScalar()];
@@ -162,6 +164,7 @@ describe(`bounty_signed_record on ${config.networkId}`, () => {
     const s = await alice.prov.publicDataProvider.queryContractState(address);
     const l = bountySignedRecordLedger(s!.data);
     expect(l.bounties.lookup(id).status).toEqual(Status.SOLVED);
+    expect(l.listings.lookup(id)).toEqual({ title: TITLE, details: DETAILS });
     expect(pure.decrypt(l.deliveries.lookup(id), posterKey, id)).toEqual(record);
   }, LONG);
 });

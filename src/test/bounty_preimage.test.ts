@@ -59,6 +59,8 @@ const config = getConfig();
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
+const TITLE = 'Name the ship in the bottle';
+const DETAILS = 'What was the ship in the bottle on the mantel called? One word, as on its label. ⛵';
 // D4, D1, D2, D3 and D5 each escrow one reward; D2's and D5's stay locked.
 const BOUNTIES = 5n;
 
@@ -131,7 +133,7 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
   async function post(id: Uint8Array, answer: bigint[], deadline: number, label: string) {
     const reward = freshCoin(color, REWARD);
     const key = await posterKeyFor(posterSeed, address, id);
-    await call(alice, label, 'postBounty', [id, reward, pure.posterPublicKey(key), pure.answerHash(answer), BigInt(deadline)]);
+    await call(alice, label, 'postBounty', [id, reward, pure.posterPublicKey(key), pure.answerHash(answer), BigInt(deadline), TITLE, DETAILS]);
     await syncWallet(logger, alice.wallet.wallet, 600_000);
     return { reward, key };
   }
@@ -216,6 +218,8 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
 
     const l = await query();
     expect(l.bounties.lookup(id).status).toEqual(Status.SOLVED);
+    // The text came through a real transaction, unicode included.
+    expect(l.listings.lookup(id)).toEqual({ title: TITLE, details: DETAILS });
     expect(l.escrows.member(id)).toBe(false);
     const delivery = l.deliveries.lookup(id);
     expect(pure.decrypt(delivery, key, id)).toEqual(answer);

@@ -16,6 +16,8 @@ import { JUBJUB_ORDER, signRecord } from '../../contract/signing.js';
 
 const REWARD = 100n;
 const STAKE = 10n;
+const TITLE = 'Income of at least 3,000';
+const DETAILS = 'A bank statement record signed by the test issuer, with an amount of at least 3,000.';
 const POSTER_PK = 'b0'.repeat(32);
 const SOLVER_PK = 'a0'.repeat(32);
 const SCHEMA = BigInt('0x' + Buffer.from('pb:bank-statement:v1').toString('hex'));
@@ -56,7 +58,7 @@ function setup(witnesses = bountyWitnesses) {
   const post = (bountyId: Uint8Array, issuer = issuerPk, field = FIELD) =>
     sim
       .as(POSTER_PK)
-      .call('postBounty', bountyId, freshCoin(REWARD), pureCircuits.publicKey(posterKey), issuer, SCHEMA, field, THRESHOLD, nowSec() + 3600n);
+      .call('postBounty', bountyId, freshCoin(REWARD), pureCircuits.publicKey(posterKey), issuer, SCHEMA, field, THRESHOLD, nowSec() + 3600n, TITLE, DETAILS);
   post(id);
   const submitAs = (record: bigint[], signature: SchnorrSignature) => {
     sim.as(SOLVER_PK).privateState = createBountyPrivateState(solverSk, record, signature);
@@ -74,6 +76,7 @@ describe('bounty_signed_record (in memory)', () => {
     const l = f.sim.ledger();
     expect(l.bounties.lookup(f.id).status).toEqual(Status.SOLVED);
     expect(l.bounties.lookup(f.id).schema).toEqual(SCHEMA);
+    expect(l.listings.lookup(f.id)).toEqual({ title: TITLE, details: DETAILS });
     const paid = (f.sim.lastContext?.currentZswapLocalState.outputs ?? []).filter(
       (o) => o.recipient.is_left && hex(o.recipient.left.bytes) === SOLVER_PK && o.coinInfo.value === REWARD + STAKE,
     );
