@@ -40,6 +40,7 @@ import {
   DETAILS_MAX,
   encodeAnswer,
   listingError,
+  postError,
   postTime,
   TITLE_MAX,
   freshCoin,
@@ -78,8 +79,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** The contract between calls: its state, and a call that advances it. */
 class Board {
   data;
-  constructor(poster: PS) {
-    this.data = contract.initialState(createConstructorContext(poster, POSTER_PK), COLOR.bytes).currentContractState.data;
+  // The deploy-time minimums. The refund test waits out a short deadline, so
+  // no minimum window by default.
+  constructor(poster: PS, minReward = 1n, minWindow = 0n) {
+    this.data = contract.initialState(createConstructorContext(poster, POSTER_PK), COLOR.bytes, minReward, minWindow)
+      .currentContractState.data;
   }
   get ledger(): Ledger {
     return ledger(this.data);
@@ -103,10 +107,11 @@ class Board {
 
 /** What postNewBounty does, against the in-memory board. */
 async function post(board: Board, poster: PS, answer = ANSWER, deadline = nowSec() + 3600n) {
-  const id = crypto.getRandomValues(new Uint8Array(32));
+  const salt = crypto.getRandomValues(new Uint8Array(32));
+  const id = pureCircuits.bountyIdFor(salt, poster.sk);
   const key = await posterKeyFor(poster.posterSeed!, ADDRESS, id);
   board.call(POSTER_PK, poster, (ctx) =>
-    c.postBounty(ctx, id, freshCoin(COLOR.hex, REWARD), pureCircuits.posterPublicKey(key), pureCircuits.answerHash(encodeAnswer(answer)), deadline, TITLE, DETAILS, postTime()),
+    c.postBounty(ctx, salt, freshCoin(COLOR.hex, REWARD), pureCircuits.posterPublicKey(key), pureCircuits.answerHash(encodeAnswer(answer)), deadline, TITLE, DETAILS, postTime()),
   );
   return id;
 }
@@ -189,7 +194,7 @@ describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
     expect(actionError("decrypt", board.ledger, row(board, id, poster), nowSec())).toBeNull();
     expect(actionError("decrypt", board.ledger, row(board, id, solver), nowSec())).toBe("Only the poster can decrypt");
     expect(await readAnswer(board.ledger, ADDRESS, id, poster.posterSeed!)).toBe(ANSWER);
-    await expect(readAnswer(board.ledger, ADDRESS, id, solver.posterSeed!)).rejects.toThrow();
+    await expect(readAnswer(board.ledger, ADDRESS, id, solver.posterSeed!)).rejects.toThrow(/doesn't match/);
   });
 
   it("refunds the poster after the deadline, and nobody else", async () => {
@@ -217,6 +222,23 @@ describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
     expect(toHex(ba.poster)).not.toBe(toHex(bb.poster));
     expect(ba.posterPk.x).not.toBe(bb.posterPk.x);
     expect(bountyViews(board.ledger, ADDRESS, poster).every((v) => v.mine)).toBe(true);
+  });
+
+  it("postError and the circuit agree on the reward and window checks", async () => {
+    const poster = newPrivateState();
+    const board = new Board(poster, 50n, 3600n);
+    const key = await posterKeyFor(poster.posterSeed!, ADDRESS, crypto.getRandomValues(new Uint8Array(32)));
+    const postedAt = postTime();
+    for (const [reward, window] of [[49n, 7200n], [50n, 3599n], [0n, 7200n], [50n, 3600n], [51n, 4000n]] as const) {
+      const deadline = postedAt + window;
+      const predicted = postError(board.ledger, reward, deadline, postedAt);
+      const actual = board.errorOf(POSTER_PK, poster, (ctx) =>
+        c.postBounty(ctx, crypto.getRandomValues(new Uint8Array(32)), freshCoin(COLOR.hex, reward), pureCircuits.posterPublicKey(key),
+          pureCircuits.answerHash(encodeAnswer(ANSWER)), deadline, TITLE, DETAILS, postedAt),
+      );
+      if (predicted === null) expect(actual).toBeNull();
+      else expect(actual).toContain(predicted);
+    }
   });
 
   it("never leaves the answer in a new private state", () => {
@@ -257,8 +279,15 @@ describe("answer encoding", () => {
     expect(listingError(TITLE, "x".repeat(DETAILS_MAX + 1))).toBe(`Question is over ${DETAILS_MAX} characters`);
   });
 
-  it("postTime records a minute before the browser's clock, in seconds", () => {
-    expect(postTime(1_793_172_852_999)).toBe(1_793_172_792n);
+  it("postTime records a minute before the browser's clock, rounded down to 5 minutes", () => {
+    // 1,793,172,852 s, minus 60, rounded down to a multiple of 300.
+    expect(postTime(1_793_172_852_999)).toBe(1_793_172_600n);
+    for (const ms of [0, 59_999, 60_000, 1_793_172_852_999]) {
+      const t = BigInt(Math.floor(ms / 1000) - 60);
+      const p = postTime(ms);
+      expect(p % 300n).toBe(0n);
+      expect(t - p >= 0n && t - p < 300n).toBe(true);
+    }
   });
 
   it("parseAmount accepts exactly the positive Uint<64> values", () => {

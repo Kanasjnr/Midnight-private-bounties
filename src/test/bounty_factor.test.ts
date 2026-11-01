@@ -44,6 +44,9 @@ const config = getConfig();
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
+// The deploy-time minimums. Tests use short deadlines, so no minimum window.
+const MIN_REWARD = 1n;
+const MIN_WINDOW = 0n;
 const TITLE = 'Factor a 62-bit number';
 const DETAILS = 'N is the product of two primes. Send p and q.';
 // A minute back, so a block clock running slightly behind can't reject it.
@@ -106,7 +109,7 @@ describe(`bounty_factor on ${config.networkId}`, () => {
       compiledContract: CompiledBountyFactorContract,
       privateStateId: alice.psId,
       initialPrivateState: createBountyPrivateState(alice.sk),
-      args: [color.bytes],
+      args: [color.bytes, MIN_REWARD, MIN_WINDOW],
     });
     address = bounty.deployTxData.public.contractAddress;
     for (const p of [alice, bob]) p.prov.privateStateProvider.setContractAddress(address);
@@ -131,9 +134,10 @@ describe(`bounty_factor on ${config.networkId}`, () => {
   });
 
   it('pays a solver who knows the factors; the poster decrypts them', async () => {
-    const id = new Uint8Array(randomBytes(32));
+    const salt = new Uint8Array(randomBytes(32));
+    const id = pure.bountyIdFor(salt, alice.sk);
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
-    await call(alice, 'post', 'postBounty', [id, freshCoin(color, REWARD), pure.posterPublicKey(posterKey), N, deadline, TITLE, DETAILS, postedAt()]);
+    await call(alice, 'post', 'postBounty', [salt, freshCoin(color, REWARD), pure.posterPublicKey(posterKey), N, deadline, TITLE, DETAILS, postedAt()]);
 
     await syncWallet(logger, bob.wallet.wallet, 600_000);
     const before = await shieldedBalance(bob.wallet, color);

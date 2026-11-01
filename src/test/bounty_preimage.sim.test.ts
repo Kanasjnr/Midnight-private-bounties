@@ -15,6 +15,9 @@ import { posterKeyFor } from '../../contract/keys.js';
 
 const REWARD = 100n;
 const STAKE = 10n;
+// The deploy-time minimums. Most tests use short deadlines, so no minimum window.
+const MIN_REWARD = 1n;
+const MIN_WINDOW = 0n;
 const TITLE = 'Name the ship in the bottle';
 const DETAILS = 'What was the ship in the bottle on the mantel called? One word, as on its label. ⛵';
 const POSTER_PK = 'b0'.repeat(32); // coin public keys, hex
@@ -38,7 +41,7 @@ const freshCoin = (value: bigint, c: Uint8Array = color) => ({ nonce: rand32(), 
 
 type Fixture = ReturnType<typeof setup>;
 
-function setup() {
+function setup(minReward = MIN_REWARD, minWindow = MIN_WINDOW) {
   const posterSk = rand32();
   const solverSk = rand32();
   const posterKey = randomScalar(); // b: the poster's encryption secret, off-chain only
@@ -48,7 +51,7 @@ function setup() {
     contract: new Contract(bountyWitnesses),
     ledger,
     privateState: createBountyPrivateState(posterSk),
-    args: [color],
+    args: [color, minReward, minWindow],
     coinPublicKey: POSTER_PK,
   });
 
@@ -60,11 +63,13 @@ function setup() {
     sim.as(pk).privateState = createBountyPrivateState(sk, ans);
     return sim;
   };
+  // The ID comes from a fresh salt and the poster's secret (second audit, L3).
+  const idFor = (salt: Uint8Array) => pureCircuits.bountyIdFor(salt, posterSk);
   const post = (deadline: bigint = nowSec() + 3600n) => {
-    const id = rand32();
+    const salt = rand32();
     const reward = freshCoin(REWARD);
-    asPoster().call('postBounty', id, reward, pureCircuits.posterPublicKey(posterKey), target, deadline, TITLE, DETAILS, nowSec());
-    return { id, reward };
+    asPoster().call('postBounty', salt, reward, pureCircuits.posterPublicKey(posterKey), target, deadline, TITLE, DETAILS, nowSec());
+    return { id: idFor(salt), salt, reward };
   };
   /** Coin outputs of the last call that pay `pk` exactly `value`. */
   const paid = (pk: string, value: bigint) =>
@@ -72,7 +77,7 @@ function setup() {
       (o) => o.recipient.is_left && hex(o.recipient.left.bytes) === pk && o.coinInfo.value === value,
     );
 
-  return { sim, posterSk, solverSk, posterKey, answer, target, asPoster, asSolver, post, paid };
+  return { sim, posterSk, solverSk, posterKey, answer, target, asPoster, asSolver, idFor, post, paid };
 }
 
 describe('bounty_preimage (in memory)', () => {
@@ -93,6 +98,8 @@ describe('bounty_preimage (in memory)', () => {
       // The reward coin is public by design (whoever solves it must spend it).
       expect(hex(l.escrows.lookup(id).nonce)).toEqual(hex(reward.nonce));
       expect(l.escrows.lookup(id).value).toEqual(REWARD);
+      // The listing's reward is the escrowed coin's value (second audit, S4).
+      expect(l.listings.lookup(id).reward).toEqual(l.escrows.lookup(id).value);
       // The poster is a pseudonym, not their secret.
       expect(hex(b.poster)).not.toEqual(hex(f.posterSk));
     });
@@ -113,30 +120,68 @@ describe('bounty_preimage (in memory)', () => {
       const f = setup();
       const pk = pureCircuits.posterPublicKey(f.posterKey);
       const soon = nowSec() + 3600n;
-      const post = (postedAt: bigint, id = rand32()) =>
-        f.asPoster().call('postBounty', id, freshCoin(REWARD), pk, f.target, soon, TITLE, DETAILS, postedAt);
+      const post = (postedAt: bigint, salt = rand32()) =>
+        f.asPoster().call('postBounty', salt, freshCoin(REWARD), pk, f.target, soon, TITLE, DETAILS, postedAt);
       expectRejects(() => post(nowSec() + 60n), 'Post time is in the future');
-      expectRejects(() => post(nowSec() - 901n), 'Post time is too old');
-      const id = rand32();
-      const postedAt = nowSec() - 880n;
-      post(postedAt, id);
-      expect(f.sim.ledger().listings.lookup(id).postedAt).toEqual(postedAt);
+      // Exactly 15 minutes old is already too old (second audit, S4).
+      expectRejects(() => post(nowSec() - 900n), 'Post time is too old');
+      const salt = rand32();
+      const postedAt = nowSec() - 895n;
+      post(postedAt, salt);
+      expect(f.sim.ledger().listings.lookup(f.idFor(salt)).postedAt).toEqual(postedAt);
     });
 
-    it('takes long text: the contract sets no limit, the UI does', () => {
+    it("takes long text up to the ledger's 32 KiB cell bound, and no more", () => {
       const f = setup();
-      const id = rand32();
+      const pk = pureCircuits.posterPublicKey(f.posterKey);
+      const post = (details: string, salt = rand32()) =>
+        f.asPoster().call('postBounty', salt, freshCoin(REWARD), pk, f.target, nowSec() + 3600n, '', details, nowSec());
+      const salt = rand32();
       const long = 'ζ'.repeat(2000);
-      f.asPoster().call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(f.posterKey), f.target, nowSec() + 3600n, '', long, nowSec());
-      expect(f.sim.ledger().listings.lookup(id)).toMatchObject({ title: '', details: long });
+      post(long, salt);
+      expect(f.sim.ledger().listings.lookup(f.idFor(salt))).toMatchObject({ title: '', details: long });
+      // The contract can't check an Opaque string's length; the ledger caps a
+      // cell at 32,768 bytes (second audit, L1 and S4).
+      post('A'.repeat(32_700));
+      expectRejects(() => post('A'.repeat(32_800)), 'Cell exceeded maximum bound of 32768');
+    });
+
+    it('enforces the deploy-time minimum reward and minimum open window (second audit, L1)', () => {
+      const f = setup(50n, 3600n);
+      const pk = pureCircuits.posterPublicKey(f.posterKey);
+      const now = nowSec();
+      const post = (reward: bigint, deadline: bigint) =>
+        f.asPoster().call('postBounty', rand32(), freshCoin(reward), pk, f.target, deadline, TITLE, DETAILS, now);
+      expectRejects(() => post(49n, now + 7200n), 'Reward is below the minimum');
+      expectRejects(() => post(50n, now + 3599n), 'Deadline is too soon');
+      post(50n, now + 3600n);
+      expect(f.sim.ledger().minReward).toEqual(50n);
+      expect(f.sim.ledger().minWindow).toEqual(3600n);
+    });
+
+    it("can't be front-run with the poster's bounty ID (second audit, L3)", () => {
+      const f = setup();
+      const pk = pureCircuits.posterPublicKey(f.posterKey);
+      const soon = nowSec() + 3600n;
+      const salt = rand32();
+      const victimId = f.idFor(salt);
+      // A squatter who copies the pending post, salt included, gets a bounty
+      // under their own secret, which is a different ID.
+      f.sim.as(OTHER_PK).privateState = createBountyPrivateState(rand32());
+      f.sim.call('postBounty', salt, freshCoin(REWARD), pk, f.target, soon, TITLE, DETAILS, nowSec());
+      expect(f.sim.ledger().bounties.member(victimId)).toBe(false);
+      // So the poster's own post still lands, under the ID they expected.
+      f.asPoster().call('postBounty', salt, freshCoin(REWARD), pk, f.target, soon, TITLE, DETAILS, nowSec());
+      expect(f.sim.ledger().bounties.member(victimId)).toBe(true);
+      expect(f.sim.ledger().bounties.size()).toEqual(2n);
     });
 
     it('rejects a duplicate id, the wrong token, an empty coin and a past deadline', () => {
       const f = setup();
-      const { id } = f.post();
+      const { salt } = f.post();
       const pk = pureCircuits.posterPublicKey(f.posterKey);
       const soon = nowSec() + 3600n;
-      expectRejects(() => f.asPoster().call('postBounty', id, freshCoin(REWARD), pk, f.target, soon, TITLE, DETAILS, nowSec()), 'Bounty already exists');
+      expectRejects(() => f.asPoster().call('postBounty', salt, freshCoin(REWARD), pk, f.target, soon, TITLE, DETAILS, nowSec()), 'Bounty already exists');
       expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD, otherColor), pk, f.target, soon, TITLE, DETAILS, nowSec()), 'Wrong token');
       expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(0n), pk, f.target, soon, TITLE, DETAILS, nowSec()), 'Reward has no value');
       expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), pk, f.target, nowSec() - 1n, TITLE, DETAILS, nowSec()), 'Deadline has passed');
@@ -147,10 +192,11 @@ describe('bounty_preimage (in memory)', () => {
     it("can't link a poster's bounties through the pseudonym or the encryption key", async () => {
       const f = setup();
       const seed = rand32();
-      const ids = [rand32(), rand32()];
-      for (const id of ids) {
+      const salts = [rand32(), rand32()];
+      const ids = salts.map(f.idFor);
+      for (const [i, id] of ids.entries()) {
         const b = await posterKeyFor(seed, f.sim.address, id);
-        f.asPoster().call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(b), f.target, nowSec() + 3600n, TITLE, DETAILS, nowSec());
+        f.asPoster().call('postBounty', salts[i], freshCoin(REWARD), pureCircuits.posterPublicKey(b), f.target, nowSec() + 3600n, TITLE, DETAILS, nowSec());
       }
       const [b1, b2] = ids.map((id) => f.sim.ledger().bounties.lookup(id));
       expect(hex(b1.poster)).not.toEqual(hex(b2.poster));
