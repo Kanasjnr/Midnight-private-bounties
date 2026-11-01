@@ -1,8 +1,10 @@
 # Private Bounties on Midnight: Architecture
 
-**Status:** draft v0.6, 2026-10-28. Updated with the spike results (every question in section 18
-is answered or decided; Q6 still needs a Lace run) and the fixes from the first security audit
-([report](docs/security-audit.md)). Anything still marked 🔬 is unproven. Code blocks
+**Status:** draft v0.8, 2026-11-01. Updated with the spike results (Q1 to Q12 are answered or
+decided; Q6 still needs a Lace run), the fixes from the first security audit
+([report](docs/security-audit.md)), a title and question for every bounty (section 7), and a
+second mode, **reviewed work**, for bounties a person has to judge (section 5; spike Q13 passed in
+memory). Anything still marked 🔬 is unproven. Code blocks
 are **pseudocode, not Compact**. Midnight-specific facts were checked against the Compact
 standard library at `compactc-v0.31.1` and against
 [midnight-examples](https://github.com/midnightntwrk/midnight-examples) at `cb250c9`.
@@ -24,6 +26,12 @@ reward back.
 Researchers call this **zero-knowledge contingent payment (ZKCP)**. It has been studied since 2016,
 but nobody runs it in production. Midnight can do what earlier designs couldn't: verify the
 checker, the key exchange and the encryption **inside one proof**, and settle with shielded tokens.
+
+Most real bounties are for work a person has to judge: build a tool, write a guide, host a
+workshop. No circuit can check those, so a second mode, **reviewed work**, keeps what Midnight
+adds (the reward locked up front, a private delivery, an unlinkable payout) and replaces the
+proof of correctness with the poster's approval, a review clock and an optional arbiter
+(section 5).
 
 We're building it in the open during Build Club. Once it's built and thoroughly tested, its
 building blocks get split into standalone examples.
@@ -47,7 +55,8 @@ Diffie-Hellman key exchange on the Jubjub curve, and the proof shows it was done
 - Large files. Payloads are a few hundred bytes: answers, records and credentials.
 - Arbitrary checkers. Every checker is a Compact circuit, so v1 ships three templates.
 - Real-value payments. The demo pays with a test token the app mints itself.
-- Dispute resolution or reputation.
+- Dispute resolution beyond reviewed work's optional arbiter, who can only overturn a
+  rejection. Reputation.
 
 ## 4. Actors and system context
 
@@ -62,19 +71,67 @@ Diffie-Hellman key exchange on the Jubjub curve, and the proof shows it was done
 
 ![System context: poster and solver machines, each with the app, a wallet and a local proof server, talking to the Midnight network](docs/images/system-context.svg)
 
-## 5. Two modes
+## 5. Modes
 
-| | **Open bounty** (v1, flagship) | **Private offer** (v2) |
-|---|---|---|
-| Who | One poster, any solver | One buyer, one seller who already has the data |
-| Order | Reward first, then answers compete | Seller lists with proof, buyer pays, seller claims |
-| Reward or price | **Public**: it's advertised to attract solvers | **Private**: committed, never in public state 🔬 |
-| Key handling | Solver encrypts straight to the poster's key | Seller commits to key k at listing, then wraps k for the buyer at claim |
-| Transactions for the solver | One: `submit` brings the solver's own coin in the same transaction (Q3, verified) | List + claim |
-| Example use | "Factor N", "find the preimage", "a signed record with income ≥ X" | Sell a verified fact to one lender |
+| | **Open bounty** (v1, flagship) | **Reviewed work** (planned, Q13) | **Private offer** (v2) |
+|---|---|---|---|
+| Who | One poster, any solver | One poster, one contributor at a time, an optional arbiter | One buyer, one seller who already has the data |
+| Who decides it's done | The checker, inside the proof | The poster, or the arbiter on appeal | The checker, inside the proof |
+| Order | Reward first, then answers compete | Reward first, then claim, deliver, review, collect | Seller lists with proof, buyer pays, seller claims |
+| Reward or price | **Public**: it's advertised to attract solvers | **Public**, as in the open bounty | **Private**: committed, never in public state 🔬 |
+| Key handling | Solver encrypts straight to the poster's key | Contributor encrypts the submission to the poster's key; no checker | Seller commits to key k at listing, then wraps k for the buyer at claim |
+| Transactions for the solver or contributor | One: `submit` brings the solver's own coin in the same transaction (Q3, verified) | Three: claim (or apply), submit, collect | List + claim |
+| Example use | "Factor N", "find the preimage", "a signed record with income ≥ X" | "Build a tool", "write a guide", "host a workshop" | Sell a verified fact to one lender |
 
-v1 builds the open bounty. The private offer reuses the same modules and adds a commitment to
-k and a hidden price (section 14).
+v1 builds the open bounty. Reviewed work comes next: spike Q13 ran its contract in memory. The private offer
+reuses the same modules and adds a commitment to k and a hidden price (section 14).
+
+### Reviewed work (spike Q13)
+
+Nothing about the work is checked in a circuit; the poster approves it. What the contract adds
+is that every promise is enforced: the reward is locked before anyone starts, the contributor
+has an exclusive window to deliver, the poster has a fixed window to review, and silence pays
+the contributor. Spike Q13 built the contract and ran it in memory
+([results](spike/q13-reviewed-work/RESULTS.md)). What's still marked 🔬 needs a devnet run or a
+decision.
+
+```mermaid
+stateDiagram-v2
+  [*] --> OPEN: postWork (reward locked)
+  OPEN --> ASSIGNED: claim (first to claim) or assign (poster picks an applicant)
+  ASSIGNED --> OPEN: reopen, once the delivery window has passed
+  ASSIGNED --> SUBMITTED: submit (encrypted to the poster)
+  SUBMITTED --> APPROVED: approve
+  SUBMITTED --> PAID: collect, once the review window has passed (silence pays)
+  SUBMITTED --> REJECTED: reject, if there is an arbiter
+  SUBMITTED --> OPEN: reject, if there is no arbiter
+  REJECTED --> APPROVED: overturn (arbiter only)
+  REJECTED --> OPEN: reopen, once the appeal window has passed
+  APPROVED --> PAID: collect (the contributor's fresh coin merged first)
+  OPEN --> REFUNDED: refund, after the final deadline
+  PAID --> [*]
+  REFUNDED --> [*]
+```
+
+`refund` also takes back an assignment that ran out, or a rejection past its appeal window.
+Submitted or approved work is never refundable.
+
+| Piece | Proposal |
+|---|---|
+| Contributor identity | A per-bounty pseudonym from the contributor's own secret, as for posters. Nothing on chain links a contributor's bounties |
+| Contributor profile | Off chain: a name and linked accounts. Each application chooses who sees it: the poster only (default, encrypted in the application), everyone once assigned, or nobody. GitHub is verified by a signed statement in a public gist, checked in the browser; other accounts show as unverified |
+| Poster identity | Anonymous by default, or a verified organization name, so contributors know who is paying. How the name is verified is open 🔬 |
+| Applications | Encrypted to the poster. Whether they live on chain (fees per application) or off chain is open 🔬 |
+| Windows | Compact has no clock value, only comparisons with block time. Whoever sets a window end passes it as an argument, and the circuit checks it lies between `now + window − slack` and `now + window`: `blockTimeGte(end − window)` and `blockTimeLt(end − window + slack)`. The check has to be two-sided, because the poster sets deliver-by and appeal-by and the contributor sets review-by, and each could cut the other's window short. `slack` is fixed per deployment and must cover the time a call takes to land: up to 2.5 minutes in Q6, so 10 to 15 minutes 🔬 (devnet) |
+| Claims | `claim` (first to claim) and `assign` (the poster picks an applicant's pseudonym) set deliver-by. Claims close once a full delivery window no longer fits before the final deadline, which the post form should show. `reopen` is its own circuit: anyone can call it on an assignment or a rejection whose window has passed |
+| Review clock | `submit` sets review-by. The poster can approve or reject until then. After it, `collect` works without an approval |
+| Submission | A link, encrypted to the poster with the existing key exchange and keystream. The four field elements hold about 124 bytes, enough for a link; notes go in messages |
+| Payout | `approve` only changes the status. The contributor's `collect` receives a fresh coin of their own (it may be worth zero) and merges it first, as `submit` does (Q3), and pays reward plus coin to the caller. Unlinkability needs the Q2 leak checks on a devnet 🔬 |
+| Arbiter | Optional, named at post time, with the same id on every bounty because it's a known party. Its only power is to overturn a rejection within the appeal window. Without an arbiter, a rejection reopens the work at once |
+| Locked rewards | Submitted work can't be refunded, so a contributor who submits and never collects leaves the reward locked for good. Fix: a long collect-by limit (for example 90 days after review-by), after which the poster can take it back. Not built yet |
+| Squatting | In first-to-claim mode, one person can claim, let the window run out, and claim again, keeping a bounty blocked for one fee per window. Possible fixes: make applicant mode the default, let the poster release a first-to-claim assignment while nothing has been submitted, or ask for a small claim deposit. Undecided 🔬 |
+| Messages | Encrypted between the poster's and the contributor's per-bounty keys. Storage is open: on chain costs DUST per message, and off chain needs a relay 🔬 |
+| Reminders | Worked out in the browser from the windows in public state, with no bot or server |
 
 ## 6. Component architecture
 
@@ -143,8 +200,15 @@ bounties:   Map<BountyId, {
               status:   OPEN | SOLVED | REFUNDED }>
 escrows:    Map<BountyId, QualifiedShieldedCoinInfo>   // v1: public, a fresh coin, via insertCoin
 deliveries: Map<BountyId, { E: JubjubPoint, c: Vector<N, Field> }>
+listings:   Map<BountyId, { title: Opaque<"string">, details: Opaque<"string"> }>
 rewardColor: sealed Bytes<32>                          // accepted reward token, set at deploy
 ```
+
+A bounty's title and question (`details`) live in `listings`, apart from `bounties`. `postBounty`
+writes them once. `submit` and `refund` rewrite the bounty record to change its status, and
+would carry the text along each time if it lived there. No circuit checks the text, and the
+contract sets no length limit. The UI caps the title at 80 characters and the question at 1,000,
+because every character is public and paid for in the transaction.
 
 In `bounty_preimage` the checker's parameter is `target: Field`; `bounty_factor` stores its N in
 the same slot. `bounty_signed_record` replaces it with `issuerPk: JubjubPoint`, `field: Uint<8>`
@@ -155,7 +219,7 @@ and `threshold: Uint<64>`. In every template the payload is four field elements
 
 | Circuit | Caller | What the proof shows | Public effects |
 |---|---|---|---|
-| `postBounty` | Poster | Poster pseudonym comes from their secret and this bounty's ID; the coin has the reward color and a non-zero value; the deadline is still ahead; the poster's key (and in signed-record, the issuer's) is on the curve, in the prime-order subgroup and not the identity | Bounty record and escrow coin |
+| `postBounty` | Poster | Poster pseudonym comes from their secret and this bounty's ID; the coin has the reward color and a non-zero value; the deadline is still ahead; the poster's key (and in signed-record, the issuer's) is on the curve, in the prime-order subgroup and not the identity | Bounty record, escrow coin, title and question |
 | `submit` | Solver | Checker passes, ECDH is correct, c encrypts the answer, before the deadline. Receives the solver's fresh coin, which may be worth zero, and merges it first | `E`, `c`, status `SOLVED`, one shielded payout: reward plus the solver's coin |
 | `refund` | Poster | Pseudonym matches; deadline passed; still `OPEN` | Status `REFUNDED`, escrow returned |
 | `answerHash`, `checkAnswer` (pure) | Browser | No proof: runs in JS | None: builds a bounty's target, and pre-checks an answer before paying for a proof |
@@ -186,6 +250,11 @@ the two-step version is no longer needed.
 | Escrow `submit` (merge + payout) | 16 | about 100 s to 134 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | `postBounty`, `refund` | 15 | about 40 s to 67 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | **Full `submit`**: checker + key exchange + encryption + escrow | **16** | **about 11 s to prove (idle runner)**; 43 s (loaded laptop) | [Q11](spike/q11-full-submit/RESULTS.md) |
+| Reviewed work `collect` (merge and payout) | 16 | Not measured; the same size as the preimage `submit` | [Q13](spike/q13-reviewed-work/RESULTS.md) |
+| Reviewed work `postWork`, `refund` | 15 | Not measured | [Q13](spike/q13-reviewed-work/RESULTS.md) |
+| Reviewed work `submit`, `claim`, `assign`, `approve`, `reject`, `overturn` | 13 | Not measured; the pseudonym's SHA-256 sets the size | [Q13](spike/q13-reviewed-work/RESULTS.md) |
+| Reviewed work `reopen` | 9 | Not measured | [Q13](spike/q13-reviewed-work/RESULTS.md) |
+| Title and question on `postBounty` | 15, unchanged | The prover key grew by 85 bytes (11,017,896 to 11,017,981). The text's length doesn't change the circuit; it only adds to the transaction | `bounty_preimage`, compiled with keys on 0.31.1, 2026-10-31 |
 
 **Coin handling, not cryptography, sets the cost.** Every coin operation hashes commitments and
 nullifiers with SHA-256 inside the standard library. The full `submit` (checker, key exchange,
@@ -294,7 +363,7 @@ flowchart TD
   B -->|yes| C["Bounty board"]
   C --> D["Post a bounty"]
   D --> D1["Pick a checker template"]
-  D1 --> D2["Enter parameters, reward, deadline"]
+  D1 --> D2["Enter a title, the question, parameters, reward, deadline"]
   D2 --> D3["Review screen:<br/>what goes public, what stays private"]
   D3 --> D4["Approve in wallet"]
   D4 --> E["My bounties"]
@@ -309,7 +378,7 @@ flowchart TD
 ```mermaid
 flowchart TD
   A(["Open the app"]) --> B["Bounty board"]
-  B --> C["Bounty detail:<br/>checker, parameters, reward, deadline"]
+  B --> C["Bounty detail:<br/>title, question, checker, parameters, reward, deadline"]
   C --> D["Enter an answer"]
   D --> E{"Pure checker passes<br/>locally?"}
   E -->|no| D
@@ -327,10 +396,14 @@ flowchart TD
 | Bounty board | Indexer subscription on the template contracts | `indexerPublicDataProvider`, contract state stream |
 | Post a bounty | Form, then a `postBounty` transaction | DApp Connector, proof server |
 | "What goes public" review | Static, per template | Selective disclosure, made visible |
-| Bounty detail | Ledger state | Public params, deadline countdown from block time |
+| Bounty detail | Ledger state: the bounty record and its listing (title and question) | Public params, deadline countdown from block time |
 | Solve | Pure checker, then one `submit`, with progress shown: proving alone takes about 11 s on an idle machine, and the whole call took 2.5 minutes in the Q6 browser run on a loaded laptop, wallet approval included | Local proving, witnesses, shielded coins |
 | My bounties / inbox | Ledger state and private state | Private state store, pure-circuit decryption |
 | Refund | `refund` transaction | Block time |
+| Post: choose the kind | Static | Reviewed work or verified answer (section 5) |
+| Reviewed work: apply, submit, collect | Public state, the encrypted thread, then `claim`, `submit`, `collect` (planned) | Block-time windows, encryption to the poster, unlinkable collect |
+| Review | The decrypted submission, then `approve` or `reject` (planned) | Review clock, optional arbiter |
+| Profile | Browser only; shared per application | Selective disclosure of a name and linked accounts |
 
 ## 12. Transaction sequences
 
@@ -346,7 +419,7 @@ sequenceDiagram
   participant W as Wallet
   participant N as Node
   participant I as Indexer
-  P->>UI: Template, parameters, reward, deadline
+  P->>UI: Template, title, question, parameters, reward, deadline
   UI->>St: Load or create poster secret and key b
   UI->>UI: posterPk = b·G, fresh reward coin info with a random nonce
   UI->>UI: Run postBounty in the JS runtime (witnesses read private state)
@@ -506,6 +579,7 @@ flowchart LR
 | Data | Who can see it |
 |---|---|
 | The answer | Solver; poster after decryption. On-chain only as ciphertext |
+| Title and question | Public, and permanent: written once at post time, never changed or removed |
 | Checker parameters, deadline | Public |
 | Reward amount (open bounty) | Public, by design |
 | Escrow coin (open bounty) | Public: nonce, value and tree position. A fresh coin, so it doesn't point at the poster's wallet |
@@ -517,6 +591,9 @@ flowchart LR
 | Refund destination | Linkable only by someone who already suspects the poster's wallet (v1 limit) |
 | Poster key `b`, solver scalar `e` | Private state, and `e` is discarded after proving |
 | Fees | Paid in DUST |
+| Reviewed work: who is assigned | A per-bounty pseudonym. Their profile only if they share it: with the poster by default, or with everyone once assigned |
+| Reviewed work: the submission and messages | Ciphertext to the poster; messages between the two parties' keys |
+| Reviewed work: actions | Public, like every circuit name: assigned, submitted, approved, rejected, paid |
 | Metadata | Timing and transaction graph. Not hidden by the app |
 
 ## 15. Threat model
@@ -541,10 +618,18 @@ flowchart LR
 | A signature made for another app | Signed-record bounties pin a schema tag in `record[0]`, so a zk-loan attestation from the same issuer doesn't qualify |
 | A submit that lands after the deadline | Rejected whole, with the solver's coin left in their wallet (devnet test D5). The UI warns near the deadline, because a submit takes minutes to prove, approve and land (2.5 minutes in the Q6 browser run) |
 | A wallet or hosted prover sees the proof's inputs | The app proves locally by default. Choosing wallet proving shows a warning first, because the wallet, or the hosted service it may use, sees the secret inputs: the poster's identity secret, or the solver's answer and coin (Q10) |
+| The title or question identifies the poster | The text is public and permanent, and the same writing style or details across bounties can link them, which the per-bounty pseudonym otherwise prevents. The post screen's review step shows the text under "what goes public" |
 | Bounty ID squatting | Someone who sees a pending ID can post first with the same ID ("Bounty already exists"). Denial of service only; the app retries with a fresh ID |
 | Poster loses key `b` | An encrypted backup or export of the private state |
 | `transientHash` changes at a hard fork | The poster's app decrypts as soon as a bounty is solved, keeps the plaintext, and pins its runtime version |
 | A buyer re-shares purchased data (v2) | Inherent to selling data. Out of scope |
+| Reviewed work: the poster never reviews | The review clock: once it runs out, the contributor collects without an approval |
+| Reviewed work: the poster rejects good work | The optional arbiter can overturn it. Without one, the contributor trusts the poster, as on today's bounty programs, but can't be ghosted |
+| Reviewed work: a contributor claims and never delivers | The assignment ends with the delivery window, and anyone can `reopen` the bounty |
+| Reviewed work: someone keeps re-claiming to block a bounty | Open (section 5, "Squatting"). Applicant mode isn't affected |
+| Reviewed work: a contributor submits and never collects | Planned collect-by limit, after which the poster can take the reward back (section 5) |
+| Reviewed work: someone copies a submission | Submissions are encrypted to the poster, so there's nothing public to copy |
+| Reviewed work: the arbiter sides with the poster unfairly | A stated trust assumption: the arbiter is named at post time, so contributors can choose not to apply |
 
 ## 16. Checker templates (v1)
 
@@ -588,6 +673,7 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q10 | Which prover may a user's wallet use? | ✅ Decided | Every circuit has secret inputs, so the app proves on a local proof server by default. Wallet proving is an opt-in, with a warning that the wallet, and any hosted prover it uses, sees the proof's inputs (on the solve screen, the answer). It isn't blocked, so users without a local proof server aren't shut out |
 | Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 11 s to prove on an idle runner; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
 | Q12 | Can a solver's coin be zero-value? | ✅ Answered | Yes: a solver holding none of the reward token submitted with a zero-value coin, was paid in full, and the payout passed the Q2 leak checks. Solvers don't need the token, and the contracts accept a zero-value solver coin (the reward must still be non-zero). [Results](spike/q2-escrow/RESULTS.md) |
+| Q13 | Reviewed work: can the contract enforce an exclusive claim window and a review clock with block-time comparisons only, keep the collect unlinkable, and let an arbiter overturn a rejection? | ✅ Works in memory | The contract passed 18 simulator tests: two-sided window checks, silence pays, collect merges a fresh coin first, arbiter overturn, refund. It found two gaps: squatting and rewards locked if nobody collects. Devnet leak checks and a wallet run still to do. [Results](spike/q13-reviewed-work/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 
@@ -608,6 +694,7 @@ flowchart LR
 | Spike | Oct 21 to 27 | Q1 to Q9 answered with numbers, or a design change agreed |
 | Contract | Oct 28 to Nov 10 | Three templates, simulator tests plus adversarial cases passing |
 | UI and security | Nov 11 to 24 | Full flow working on the local network, security pass done |
+| Reviewed work | Nov 2 to 14 | Q13 answered, then a fourth template with simulator and devnet tests |
 | Preprod and demo | Nov 25 to Dec 1 | End-to-end run on Preprod, demo recorded, write-up drafted |
 | Examples | December | Modules split out with their own tests and docs |
 

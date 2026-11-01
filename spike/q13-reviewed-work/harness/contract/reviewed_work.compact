@@ -1,0 +1,245 @@
+// Spike Q13: reviewed work.
+//
+// A poster locks a reward for work a person has to judge. One contributor at a
+// time gets an exclusive window to deliver, the poster gets a fixed window to
+// review, and silence pays the contributor. An optional arbiter can overturn a
+// rejection. Nothing about the work itself is checked in a circuit.
+//
+// Compact has no clock value, only comparisons with block time, so every
+// window end is an argument the caller picks, checked against the window with
+// `assertWindowEnd`. See ARCHITECTURE.md section 5.
+
+pragma language_version 0.23;
+import CompactStandardLibrary;
+import "escrow" prefix Escrow_;
+import "deadline" prefix Deadline_;
+import "pseudonym" prefix Pseudonym_;
+import "ecdh" prefix Ecdh_;
+import "stream_cipher" prefix Cipher_;
+
+export enum Status { OPEN, ASSIGNED, SUBMITTED, APPROVED, REJECTED, PAID, REFUNDED }
+
+// Fixed when the work is posted.
+export struct Terms {
+  firstToClaim: Boolean;    // true: anyone may claim; false: the poster assigns
+  deliveryWindow: Uint<64>; // seconds a contributor has to deliver
+  reviewWindow: Uint<64>;   // seconds the poster has to review
+  appealWindow: Uint<64>;   // seconds the arbiter has to overturn a rejection
+  deadline: Uint<64>;       // final deadline, block time in seconds
+  hasArbiter: Boolean;
+  arbiter: Bytes<32>;       // the arbiter's public id (arbiterId), if any
+}
+
+export struct Work {
+  poster: Bytes<32>;        // per-bounty pseudonym
+  posterPk: JubjubPoint;    // submissions are encrypted to this key
+  terms: Terms;
+  status: Status;
+  contributor: Bytes<32>;   // per-bounty pseudonym of the assigned contributor
+  until: Uint<64>;          // ASSIGNED: deliver by; SUBMITTED: review by; REJECTED: appeal by
+}
+
+export struct Delivery {
+  ephemeralPk: JubjubPoint;
+  c: Vector<4, Field>;      // the submission (a link), encrypted to the poster
+}
+
+export sealed ledger rewardColor: Bytes<32>;
+// How far before `now + window` a window end may fall. It absorbs the time a
+// transaction takes to land, and stops whoever sets a window end from cutting
+// the window short.
+export sealed ledger slack: Uint<64>;
+export ledger works: Map<Bytes<32>, Work>;
+export ledger escrows: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
+export ledger submissions: Map<Bytes<32>, Delivery>;
+
+witness localSecretKey(): Bytes<32>;
+// The submission: a link packed into four field elements.
+witness answer(): Vector<4, Field>;
+witness ephemeralScalar(): Uint<248>;
+
+constructor(color: Bytes<32>, slackSecs: Uint<64>) {
+  rewardColor = disclose(color);
+  slack = disclose(slackSecs);
+}
+
+// ---- Off-chain helpers ----
+
+// An arbiter is a known party, so its id is the same for every bounty.
+export pure circuit arbiterId(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "bounty:arbiter"), sk]);
+}
+
+export pure circuit posterPublicKey(b: Field): JubjubPoint {
+  return Ecdh_publicKey(b);
+}
+
+export pure circuit decrypt(d: Delivery, b: Field, id: Bytes<32>): Vector<4, Field> {
+  const context = degradeToTransient(id);
+  return Cipher_decrypt4(d.c, Ecdh_sharedKey(b, d.ephemeralPk, context), context);
+}
+
+// ---- Internal ----
+
+// `end` must lie in [now + window - slack, now + window].
+circuit assertWindowEnd(end: Uint<64>, window: Uint<64>): [] {
+  assert(end >= window, "Window end is too early");
+  const start = (end - window) as Uint<64>;
+  assert(blockTimeGte(start), "Window end is too late");
+  assert(blockTimeLt((start + slack) as Uint<64>), "Window end is too early");
+}
+
+circuit me(domain: Bytes<32>, id: Bytes<32>): Bytes<32> {
+  return disclose(Pseudonym_derive(domain, id, localSecretKey()));
+}
+
+circuit setState(id: Bytes<32>, w: Work, status: Status, contributor: Bytes<32>, until: Uint<64>): [] {
+  works.insert(id, Work {
+    poster: w.poster, posterPk: w.posterPk, terms: w.terms,
+    status: status, contributor: contributor, until: until
+  });
+}
+
+circuit load(id: Bytes<32>): Work {
+  assert(works.member(id), "No such work");
+  return works.lookup(id);
+}
+
+// ---- Circuits ----
+
+export circuit postWork(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: JubjubPoint, terms: Terms): [] {
+  const workId = disclose(id);
+  const t = disclose(terms);
+  assert(!works.member(workId), "Work already exists");
+  Deadline_assertOpen(t.deadline);
+  Ecdh_assertValidPublicKey(disclose(posterPk));
+  assert(t.deliveryWindow > 0 && t.reviewWindow > 0, "Windows must be positive");
+  assert(!t.hasArbiter || t.appealWindow > 0, "An arbiter needs an appeal window");
+
+  assert(disclose(reward.value) > 0, "Reward has no value");
+  Escrow_receiveFresh(reward, rewardColor);
+  escrows.insertCoin(workId, disclose(reward), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
+  works.insert(workId, Work {
+    poster: me(pad(32, "bounty:poster"), workId),
+    posterPk: disclose(posterPk),
+    terms: t,
+    status: Status.OPEN,
+    contributor: default<Bytes<32>>,
+    until: 0
+  });
+}
+
+// First-to-claim mode: the caller assigns themselves.
+export circuit claim(id: Bytes<32>, deliverBy: Uint<64>): [] {
+  const workId = disclose(id);
+  const end = disclose(deliverBy);
+  const w = load(workId);
+  assert(w.terms.firstToClaim, "The poster assigns this work");
+  assert(w.status == Status.OPEN, "Not open");
+  assert(end <= w.terms.deadline, "Past the final deadline");
+  assertWindowEnd(end, w.terms.deliveryWindow);
+  setState(workId, w, Status.ASSIGNED, me(pad(32, "bounty:contributor"), workId), end);
+}
+
+// Applicant mode: the poster assigns the applicant whose pseudonym they picked.
+export circuit assign(id: Bytes<32>, contributor: Bytes<32>, deliverBy: Uint<64>): [] {
+  const workId = disclose(id);
+  const end = disclose(deliverBy);
+  const w = load(workId);
+  assert(!w.terms.firstToClaim, "This work is first to claim");
+  assert(w.poster == me(pad(32, "bounty:poster"), workId), "Only the poster can assign");
+  assert(w.status == Status.OPEN, "Not open");
+  assert(end <= w.terms.deadline, "Past the final deadline");
+  assertWindowEnd(end, w.terms.deliveryWindow);
+  setState(workId, w, Status.ASSIGNED, disclose(contributor), end);
+}
+
+export circuit submit(id: Bytes<32>, reviewBy: Uint<64>): [] {
+  const workId = disclose(id);
+  const end = disclose(reviewBy);
+  const w = load(workId);
+  assert(w.status == Status.ASSIGNED, "Not assigned");
+  assert(w.contributor == me(pad(32, "bounty:contributor"), workId), "Only the assigned contributor can submit");
+  Deadline_assertOpen(w.until);
+  assertWindowEnd(end, w.terms.reviewWindow);
+
+  const context = degradeToTransient(workId);
+  const e = ephemeralScalar() as Field;
+  submissions.insert(workId, Delivery {
+    ephemeralPk: disclose(Ecdh_publicKey(e)),
+    c: disclose(Cipher_encrypt4(answer(), Ecdh_sharedKey(e, w.posterPk, context), context))
+  });
+  setState(workId, w, Status.SUBMITTED, w.contributor, end);
+}
+
+export circuit approve(id: Bytes<32>): [] {
+  const workId = disclose(id);
+  const w = load(workId);
+  assert(w.poster == me(pad(32, "bounty:poster"), workId), "Only the poster can approve");
+  assert(w.status == Status.SUBMITTED, "Nothing to approve");
+  setState(workId, w, Status.APPROVED, w.contributor, w.until);
+}
+
+// Without an arbiter the work reopens at once; with one, it waits out the
+// appeal window first.
+export circuit reject(id: Bytes<32>, appealBy: Uint<64>): [] {
+  const workId = disclose(id);
+  const end = disclose(appealBy);
+  const w = load(workId);
+  assert(w.poster == me(pad(32, "bounty:poster"), workId), "Only the poster can reject");
+  assert(w.status == Status.SUBMITTED, "Nothing to reject");
+  Deadline_assertOpen(w.until);
+  if (w.terms.hasArbiter) {
+    assertWindowEnd(end, w.terms.appealWindow);
+    setState(workId, w, Status.REJECTED, w.contributor, end);
+  } else {
+    setState(workId, w, Status.OPEN, default<Bytes<32>>, 0);
+  }
+}
+
+export circuit overturn(id: Bytes<32>): [] {
+  const workId = disclose(id);
+  const w = load(workId);
+  assert(w.terms.hasArbiter && w.terms.arbiter == disclose(arbiterId(localSecretKey())), "Only the arbiter can overturn");
+  assert(w.status == Status.REJECTED, "Nothing to overturn");
+  Deadline_assertOpen(w.until);
+  setState(workId, w, Status.APPROVED, w.contributor, w.until);
+}
+
+// Anyone can reopen work whose delivery window or appeal window has run out.
+export circuit reopen(id: Bytes<32>): [] {
+  const workId = disclose(id);
+  const w = load(workId);
+  assert(w.status == Status.ASSIGNED || w.status == Status.REJECTED, "Nothing to reopen");
+  Deadline_assertExpired(w.until);
+  setState(workId, w, Status.OPEN, default<Bytes<32>>, 0);
+}
+
+// The contributor's own fresh coin (it may be worth zero) is merged first, so
+// the payout can't be linked to them, as in the preimage template's submit.
+export circuit collect(id: Bytes<32>, stake: ShieldedCoinInfo): [] {
+  const workId = disclose(id);
+  const w = load(workId);
+  assert(w.contributor == me(pad(32, "bounty:contributor"), workId), "Only the contributor can collect");
+  assert(w.status == Status.APPROVED || (w.status == Status.SUBMITTED && blockTimeGte(w.until)),
+         "Not approved, and the review window is still open");
+  const first = Escrow_receiveFresh(stake, rewardColor);
+  Escrow_payMerged(first, escrows.lookup(workId), ownPublicKey());
+  setState(workId, w, Status.PAID, w.contributor, w.until);
+  escrows.remove(workId);
+}
+
+// After the final deadline, the poster takes back a reward nobody earned.
+// Submitted work isn't refundable: the contributor can still be approved, or
+// collect once the review window passes.
+export circuit refund(id: Bytes<32>): [] {
+  const workId = disclose(id);
+  const w = load(workId);
+  assert(w.poster == me(pad(32, "bounty:poster"), workId), "Only the poster can refund");
+  Deadline_assertExpired(w.terms.deadline);
+  assert(w.status == Status.OPEN || w.status == Status.ASSIGNED ||
+         (w.status == Status.REJECTED && blockTimeGte(w.until)), "Not refundable");
+  Escrow_payOut(escrows.lookup(workId), ownPublicKey());
+  setState(workId, w, Status.REFUNDED, w.contributor, w.until);
+  escrows.remove(workId);
+}

@@ -1,0 +1,18 @@
+// Deadline checks for Private Bounties. Block time is in seconds since the
+// Unix epoch (verified in spike Q7).
+//
+// This file is a MODULE: `import "deadline" prefix Deadline_;`.
+
+module deadline {
+  import CompactStandardLibrary;
+
+  // Passes while the block time is before `deadline`.
+  export circuit assertOpen(deadline: Uint<64>): [] {
+    assert(blockTimeLt(deadline), "Deadline has passed");
+  }
+
+  // Passes once the block time has reached `deadline`.
+  export circuit assertExpired(deadline: Uint<64>): [] {
+    assert(blockTimeGte(deadline), "Deadline has not passed");
+  }
+}

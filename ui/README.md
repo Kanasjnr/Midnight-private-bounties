@@ -38,6 +38,10 @@ verification checklist.
   four field elements the circuit hashes (`encodeAnswer`). The solver's answer
   goes into private state just before `submit` (the `answer` witness reads it
   there) and is cleared right after, whether the call worked or not.
+- **Title and question.** Each bounty is posted with a title and a question,
+  stored on chain in the contract's `listings` map and shown on the board.
+  Both are public. The contract sets no length limit, so the page does
+  (`listingError`: 80 characters for the title, 1,000 for the question).
 - **Pre-checks.** Every solve, refund and decrypt check on the board comes
   from `actionError`, which `src/__tests__/private-bounties-circuits.test.ts`
   checks against the real compiled circuit, in memory, over the whole flow.

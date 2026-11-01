@@ -1,0 +1,27 @@
+// Keystream encryption for Private Bounties. Proven inside a circuit, this is
+// verifiable encryption: the proof shows the ciphertext encrypts the very
+// answer the checker accepted.
+//
+// This file is a MODULE: `import "stream_cipher" prefix Cipher_;`.
+//
+// Field addition rather than XOR: it is native and cheap in-circuit. A key
+// must never encrypt two messages under the same context.
+
+module stream_cipher {
+  import CompactStandardLibrary;
+
+  // Keystream element `i` under key `k` and `context`.
+  export pure circuit keystream(k: Field, context: Field, i: Field): Field {
+    return transientHash<Vector<4, Field>>(["pb:keystream" as Field, k, context, i]);
+  }
+
+  export pure circuit encrypt4(m: Vector<4, Field>, k: Field, context: Field): Vector<4, Field> {
+    return [m[0] + keystream(k, context, 0), m[1] + keystream(k, context, 1),
+            m[2] + keystream(k, context, 2), m[3] + keystream(k, context, 3)];
+  }
+
+  export pure circuit decrypt4(c: Vector<4, Field>, k: Field, context: Field): Vector<4, Field> {
+    return [c[0] - keystream(k, context, 0), c[1] - keystream(k, context, 1),
+            c[2] - keystream(k, context, 2), c[3] - keystream(k, context, 3)];
+  }
+}

@@ -32,9 +32,19 @@ export struct Delivery {
   c: Vector<4, Field>;      // the answer, encrypted to the poster
 }
 
+// What the board shows. Public, written once when the bounty is posted and
+// never changed. No circuit checks it.
+export struct Listing {
+  title: Opaque<"string">;
+  details: Opaque<"string">; // for this template, the question
+}
+
 // The token rewards are paid in. Set once, at deploy time.
 export sealed ledger rewardColor: Bytes<32>;
 export ledger bounties: Map<Bytes<32>, Bounty>;
+// Kept apart from `bounties`, which `submit` and `refund` rewrite, so the text
+// is only written once.
+export ledger listings: Map<Bytes<32>, Listing>;
 // Open bounty: the reward coin is public, because whoever solves it has to be
 // able to spend it. It is a fresh coin, so its nonce points at nobody.
 export ledger escrows: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
@@ -80,7 +90,8 @@ export pure circuit decrypt(d: Delivery, b: Field, id: Bytes<32>): Vector<4, Fie
 // ---- Circuits ----
 
 export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: JubjubPoint,
-                          target: Field, deadline: Uint<64>): [] {
+                          target: Field, deadline: Uint<64>,
+                          title: Opaque<"string">, details: Opaque<"string">): [] {
   const bountyId = disclose(id);
   assert(!bounties.member(bountyId), "Bounty already exists");
   Deadline_assertOpen(disclose(deadline));
@@ -96,6 +107,7 @@ export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: Jub
     deadline: disclose(deadline),
     status: Status.OPEN
   });
+  listings.insert(bountyId, Listing { title: disclose(title), details: disclose(details) });
 }
 
 // One transaction for the solver: the checker, the encrypted delivery and the
