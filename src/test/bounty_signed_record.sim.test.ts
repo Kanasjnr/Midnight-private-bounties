@@ -58,7 +58,7 @@ function setup(witnesses = bountyWitnesses) {
   const post = (bountyId: Uint8Array, issuer = issuerPk, field = FIELD) =>
     sim
       .as(POSTER_PK)
-      .call('postBounty', bountyId, freshCoin(REWARD), pureCircuits.publicKey(posterKey), issuer, SCHEMA, field, THRESHOLD, nowSec() + 3600n, TITLE, DETAILS);
+      .call('postBounty', bountyId, freshCoin(REWARD), pureCircuits.publicKey(posterKey), issuer, SCHEMA, field, THRESHOLD, nowSec() + 3600n, TITLE, DETAILS, nowSec());
   post(id);
   const submitAs = (record: bigint[], signature: SchnorrSignature) => {
     sim.as(SOLVER_PK).privateState = createBountyPrivateState(solverSk, record, signature);
@@ -76,7 +76,7 @@ describe('bounty_signed_record (in memory)', () => {
     const l = f.sim.ledger();
     expect(l.bounties.lookup(f.id).status).toEqual(Status.SOLVED);
     expect(l.bounties.lookup(f.id).schema).toEqual(SCHEMA);
-    expect(l.listings.lookup(f.id)).toEqual({ title: TITLE, details: DETAILS });
+    expect(l.listings.lookup(f.id)).toMatchObject({ title: TITLE, details: DETAILS, reward: REWARD });
     const paid = (f.sim.lastContext?.currentZswapLocalState.outputs ?? []).filter(
       (o) => o.recipient.is_left && hex(o.recipient.left.bytes) === SOLVER_PK && o.coinInfo.value === REWARD + STAKE,
     );

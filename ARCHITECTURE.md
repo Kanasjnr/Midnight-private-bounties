@@ -200,7 +200,8 @@ bounties:   Map<BountyId, {
               status:   OPEN | SOLVED | REFUNDED }>
 escrows:    Map<BountyId, QualifiedShieldedCoinInfo>   // v1: public, a fresh coin, via insertCoin
 deliveries: Map<BountyId, { E: JubjubPoint, c: Vector<N, Field> }>
-listings:   Map<BountyId, { title: Opaque<"string">, details: Opaque<"string"> }>
+listings:   Map<BountyId, { title: Opaque<"string">, details: Opaque<"string">,
+                            reward: Uint<128>, postedAt: Uint<64> }>
 rewardColor: sealed Bytes<32>                          // accepted reward token, set at deploy
 ```
 
@@ -209,6 +210,14 @@ writes them once. `submit` and `refund` rewrite the bounty record to change its 
 would carry the text along each time if it lived there. No circuit checks the text, and the
 contract sets no length limit. The UI caps the title at 80 characters and the question at 1,000,
 because every character is public and paid for in the transaction.
+
+The listing also keeps the **reward** and the **post time**, so the board can show what a solved
+or refunded bounty paid, and when it was posted, from current state alone (Q14). The reward is
+the escrowed coin's value; the escrow entry itself is deleted on payout. The post time is
+passed by the poster and checked against block time with `Deadline_assertRecent`: it must lie
+between 15 minutes before the block time and the block time, which leaves room for proving,
+approval and landing (Q6 took up to 2.5 minutes). The UI passes its clock minus a minute, so a
+block clock running slightly behind can't reject it.
 
 In `bounty_preimage` the checker's parameter is `target: Field`; `bounty_factor` stores its N in
 the same slot. `bounty_signed_record` replaces it with `issuerPk: JubjubPoint`, `field: Uint<8>`
@@ -219,7 +228,7 @@ and `threshold: Uint<64>`. In every template the payload is four field elements
 
 | Circuit | Caller | What the proof shows | Public effects |
 |---|---|---|---|
-| `postBounty` | Poster | Poster pseudonym comes from their secret and this bounty's ID; the coin has the reward color and a non-zero value; the deadline is still ahead; the poster's key (and in signed-record, the issuer's) is on the curve, in the prime-order subgroup and not the identity | Bounty record, escrow coin, title and question |
+| `postBounty` | Poster | Poster pseudonym comes from their secret and this bounty's ID; the coin has the reward color and a non-zero value; the deadline is still ahead; the poster's key (and in signed-record, the issuer's) is on the curve, in the prime-order subgroup and not the identity; the post time is within 15 minutes before the block time | Bounty record, escrow coin, and a listing: title, question, reward, post time |
 | `submit` | Solver | Checker passes, ECDH is correct, c encrypts the answer, before the deadline. Receives the solver's fresh coin, which may be worth zero, and merges it first | `E`, `c`, status `SOLVED`, one shielded payout: reward plus the solver's coin |
 | `refund` | Poster | Pseudonym matches; deadline passed; still `OPEN` | Status `REFUNDED`, escrow returned |
 | `answerHash`, `checkAnswer` (pure) | Browser | No proof: runs in JS | None: builds a bounty's target, and pre-checks an answer before paying for a proof |
@@ -255,6 +264,7 @@ the two-step version is no longer needed.
 | Reviewed work `submit`, `claim`, `assign`, `approve`, `reject`, `overturn` | 13 | Not measured; the pseudonym's SHA-256 sets the size | [Q13](spike/q13-reviewed-work/RESULTS.md) |
 | Reviewed work `reopen` | 9 | Not measured | [Q13](spike/q13-reviewed-work/RESULTS.md) |
 | Title and question on `postBounty` | 15, unchanged | The prover key grew by 85 bytes (11,017,896 to 11,017,981). The text's length doesn't change the circuit; it only adds to the transaction | `bounty_preimage`, compiled with keys on 0.31.1, 2026-10-31 |
+| Reward and post time in the listing | 15, unchanged | The prover key grew by another 291 bytes, to 11,018,272; `refund` and `submit` are unchanged | `bounty_preimage`, compiled with keys on 0.31.1, 2026-11-01 |
 
 **Coin handling, not cryptography, sets the cost.** Every coin operation hashes commitments and
 nullifiers with SHA-256 inside the standard library. The full `submit` (checker, key exchange,
@@ -579,7 +589,7 @@ flowchart LR
 | Data | Who can see it |
 |---|---|
 | The answer | Solver; poster after decryption. On-chain only as ciphertext |
-| Title and question | Public, and permanent: written once at post time, never changed or removed |
+| Title and question, reward, post time | Public, and permanent: written once at post time, never changed or removed |
 | Checker parameters, deadline | Public |
 | Reward amount (open bounty) | Public, by design |
 | Escrow coin (open bounty) | Public: nonce, value and tree position. A fresh coin, so it doesn't point at the poster's wallet |
@@ -674,7 +684,7 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 11 s to prove on an idle runner; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
 | Q12 | Can a solver's coin be zero-value? | ✅ Answered | Yes: a solver holding none of the reward token submitted with a zero-value coin, was paid in full, and the payout passed the Q2 leak checks. Solvers don't need the token, and the contracts accept a zero-value solver coin (the reward must still be non-zero). [Results](spike/q2-escrow/RESULTS.md) |
 | Q13 | Reviewed work: can the contract enforce an exclusive claim window and a review clock with block-time comparisons only, keep the collect unlinkable, and let an arbiter overturn a rejection? | ✅ Works in memory | The contract passed 18 simulator tests: two-sided window checks, silence pays, collect merges a fresh coin first, arbiter overturn, refund. It found two gaps: squatting and rewards locked if nobody collects. Devnet leak checks and a wallet run still to do. [Results](spike/q13-reviewed-work/RESULTS.md) |
-| Q14 | Can the UI read a contract's history (activity, post times, paid amounts) from the indexer? | ✅ Answered | Yes: `contract(address) { actions(limit) }` on the Preview indexer lists every action with its circuit name, block timestamp (in milliseconds) and the state after it. It doesn't say which bounty changed (compare states), and it doesn't page by offset. Post time and amount are simpler written into `listings` at post time. [Results](spike/q14-indexer-history/RESULTS.md) |
+| Q14 | Can the UI read a contract's history (activity, post times, paid amounts) from the indexer? | ✅ Answered | Yes: `contract(address) { actions(limit) }` on the Preview indexer lists every action with its circuit name, block timestamp (in milliseconds) and the state after it. It doesn't say which bounty changed (compare states), and it doesn't page by offset. Post time and amount are simpler written into `listings` at post time, which they now are (section 7). [Results](spike/q14-indexer-history/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 

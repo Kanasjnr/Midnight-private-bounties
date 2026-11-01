@@ -52,7 +52,7 @@ function setup(n: bigint = N) {
     coinPublicKey: POSTER_PK,
   });
   const id = rand32();
-  sim.call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(posterKey), n, nowSec() + 3600n, TITLE, DETAILS);
+  sim.call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(posterKey), n, nowSec() + 3600n, TITLE, DETAILS, nowSec());
   const submitAs = (answer: bigint[]) => {
     sim.as(SOLVER_PK).privateState = createBountyPrivateState(solverSk, answer);
     return sim.call('submit', id, freshCoin(STAKE));
@@ -67,7 +67,7 @@ describe('bounty_factor (in memory)', () => {
     const l = f.sim.ledger();
     expect(l.bounties.lookup(f.id).status).toEqual(Status.SOLVED);
     expect(l.bounties.lookup(f.id).target).toEqual(N);
-    expect(l.listings.lookup(f.id)).toEqual({ title: TITLE, details: DETAILS });
+    expect(l.listings.lookup(f.id)).toMatchObject({ title: TITLE, details: DETAILS, reward: REWARD });
     const paid = (f.sim.lastContext?.currentZswapLocalState.outputs ?? []).filter(
       (o) => o.recipient.is_left && hex(o.recipient.left.bytes) === SOLVER_PK && o.coinInfo.value === REWARD + STAKE,
     );

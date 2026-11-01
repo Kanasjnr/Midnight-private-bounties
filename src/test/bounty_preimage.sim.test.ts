@@ -63,7 +63,7 @@ function setup() {
   const post = (deadline: bigint = nowSec() + 3600n) => {
     const id = rand32();
     const reward = freshCoin(REWARD);
-    asPoster().call('postBounty', id, reward, pureCircuits.posterPublicKey(posterKey), target, deadline, TITLE, DETAILS);
+    asPoster().call('postBounty', id, reward, pureCircuits.posterPublicKey(posterKey), target, deadline, TITLE, DETAILS, nowSec());
     return { id, reward };
   };
   /** Coin outputs of the last call that pay `pk` exactly `value`. */
@@ -97,22 +97,38 @@ describe('bounty_preimage (in memory)', () => {
       expect(hex(b.poster)).not.toEqual(hex(f.posterSk));
     });
 
-    it('stores the title and details once, as posted', () => {
+    it('stores the title, details and reward once, as posted', () => {
       const f = setup();
       const { id } = f.post();
-      const posted = { title: TITLE, details: DETAILS };
-      expect(f.sim.ledger().listings.lookup(id)).toEqual(posted);
-      // Solving rewrites the bounty record, not the listing.
+      const posted = { title: TITLE, details: DETAILS, reward: REWARD };
+      expect(f.sim.ledger().listings.lookup(id)).toMatchObject(posted);
+      // Solving rewrites the bounty record and removes the escrow, not the
+      // listing, so the board can still show what was paid.
       f.asSolver().call('submit', id, freshCoin(STAKE));
-      expect(f.sim.ledger().listings.lookup(id)).toEqual(posted);
+      expect(f.sim.ledger().escrows.member(id)).toBe(false);
+      expect(f.sim.ledger().listings.lookup(id)).toMatchObject(posted);
+    });
+
+    it('takes a post time from 15 minutes before the block time up to the block time', () => {
+      const f = setup();
+      const pk = pureCircuits.posterPublicKey(f.posterKey);
+      const soon = nowSec() + 3600n;
+      const post = (postedAt: bigint, id = rand32()) =>
+        f.asPoster().call('postBounty', id, freshCoin(REWARD), pk, f.target, soon, TITLE, DETAILS, postedAt);
+      expectRejects(() => post(nowSec() + 60n), 'Post time is in the future');
+      expectRejects(() => post(nowSec() - 901n), 'Post time is too old');
+      const id = rand32();
+      const postedAt = nowSec() - 880n;
+      post(postedAt, id);
+      expect(f.sim.ledger().listings.lookup(id).postedAt).toEqual(postedAt);
     });
 
     it('takes long text: the contract sets no limit, the UI does', () => {
       const f = setup();
       const id = rand32();
       const long = 'ζ'.repeat(2000);
-      f.asPoster().call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(f.posterKey), f.target, nowSec() + 3600n, '', long);
-      expect(f.sim.ledger().listings.lookup(id)).toEqual({ title: '', details: long });
+      f.asPoster().call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(f.posterKey), f.target, nowSec() + 3600n, '', long, nowSec());
+      expect(f.sim.ledger().listings.lookup(id)).toMatchObject({ title: '', details: long });
     });
 
     it('rejects a duplicate id, the wrong token, an empty coin and a past deadline', () => {
@@ -120,10 +136,10 @@ describe('bounty_preimage (in memory)', () => {
       const { id } = f.post();
       const pk = pureCircuits.posterPublicKey(f.posterKey);
       const soon = nowSec() + 3600n;
-      expectRejects(() => f.asPoster().call('postBounty', id, freshCoin(REWARD), pk, f.target, soon, TITLE, DETAILS), 'Bounty already exists');
-      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD, otherColor), pk, f.target, soon, TITLE, DETAILS), 'Wrong token');
-      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(0n), pk, f.target, soon, TITLE, DETAILS), 'Reward has no value');
-      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), pk, f.target, nowSec() - 1n, TITLE, DETAILS), 'Deadline has passed');
+      expectRejects(() => f.asPoster().call('postBounty', id, freshCoin(REWARD), pk, f.target, soon, TITLE, DETAILS, nowSec()), 'Bounty already exists');
+      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD, otherColor), pk, f.target, soon, TITLE, DETAILS, nowSec()), 'Wrong token');
+      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(0n), pk, f.target, soon, TITLE, DETAILS, nowSec()), 'Reward has no value');
+      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), pk, f.target, nowSec() - 1n, TITLE, DETAILS, nowSec()), 'Deadline has passed');
     });
   });
 
@@ -134,7 +150,7 @@ describe('bounty_preimage (in memory)', () => {
       const ids = [rand32(), rand32()];
       for (const id of ids) {
         const b = await posterKeyFor(seed, f.sim.address, id);
-        f.asPoster().call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(b), f.target, nowSec() + 3600n, TITLE, DETAILS);
+        f.asPoster().call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(b), f.target, nowSec() + 3600n, TITLE, DETAILS, nowSec());
       }
       const [b1, b2] = ids.map((id) => f.sim.ledger().bounties.lookup(id));
       expect(hex(b1.poster)).not.toEqual(hex(b2.poster));
@@ -150,9 +166,9 @@ describe('bounty_preimage (in memory)', () => {
       const f = setup();
       const soon = nowSec() + 3600n;
       // The identity point would make every shared key public.
-      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), { x: 0n, y: 1n }, f.target, soon, TITLE, DETAILS), 'Invalid public key');
+      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), { x: 0n, y: 1n }, f.target, soon, TITLE, DETAILS, nowSec()), 'Invalid public key');
       // A point that is not on the curve can't be used at all.
-      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), { x: 1n, y: 2n }, f.target, soon, TITLE, DETAILS));
+      expectRejects(() => f.asPoster().call('postBounty', rand32(), freshCoin(REWARD), { x: 1n, y: 2n }, f.target, soon, TITLE, DETAILS, nowSec()));
       expect(f.sim.ledger().bounties.size()).toEqual(0n);
     });
   });
