@@ -393,7 +393,7 @@ flowchart TD
 
 | Screen | Data source | Midnight piece |
 |---|---|---|
-| Bounty board | Indexer subscription on the template contracts | `indexerPublicDataProvider`, contract state stream |
+| Bounty board | Indexer subscription on the template contracts; the activity feed from `contract(address) { actions }` (Q14) | `indexerPublicDataProvider`, contract state stream, the indexer's action history |
 | Post a bounty | Form, then a `postBounty` transaction | DApp Connector, proof server |
 | "What goes public" review | Static, per template | Selective disclosure, made visible |
 | Bounty detail | Ledger state: the bounty record and its listing (title and question) | Public params, deadline countdown from block time |
@@ -674,6 +674,7 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 11 s to prove on an idle runner; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
 | Q12 | Can a solver's coin be zero-value? | ✅ Answered | Yes: a solver holding none of the reward token submitted with a zero-value coin, was paid in full, and the payout passed the Q2 leak checks. Solvers don't need the token, and the contracts accept a zero-value solver coin (the reward must still be non-zero). [Results](spike/q2-escrow/RESULTS.md) |
 | Q13 | Reviewed work: can the contract enforce an exclusive claim window and a review clock with block-time comparisons only, keep the collect unlinkable, and let an arbiter overturn a rejection? | ✅ Works in memory | The contract passed 18 simulator tests: two-sided window checks, silence pays, collect merges a fresh coin first, arbiter overturn, refund. It found two gaps: squatting and rewards locked if nobody collects. Devnet leak checks and a wallet run still to do. [Results](spike/q13-reviewed-work/RESULTS.md) |
+| Q14 | Can the UI read a contract's history (activity, post times, paid amounts) from the indexer? | ✅ Answered | Yes: `contract(address) { actions(limit) }` on the Preview indexer lists every action with its circuit name, block timestamp (in milliseconds) and the state after it. It doesn't say which bounty changed (compare states), and it doesn't page by offset. Post time and amount are simpler written into `listings` at post time. [Results](spike/q14-indexer-history/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 
