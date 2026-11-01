@@ -52,8 +52,13 @@ const config = getConfig();
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
+// The deploy-time minimums. Tests use short deadlines, so no minimum window.
+const MIN_REWARD = 1n;
+const MIN_WINDOW = 0n;
 const TITLE = 'Income of at least 3,000';
 const DETAILS = 'A bank statement record signed by the test issuer, with an amount of at least 3,000.';
+// A minute back, so a block clock running slightly behind can't reject it.
+const postedAt = (): bigint => BigInt(Math.floor(Date.now() / 1000) - 60);
 const SCHEMA = BigInt('0x' + Buffer.from('pb:bank-statement:v1').toString('hex'));
 const FIELD = 1n; // record[1] holds the amount
 const THRESHOLD = 3000n;
@@ -120,7 +125,7 @@ describe(`bounty_signed_record on ${config.networkId}`, () => {
       compiledContract: CompiledBountySignedRecordContract,
       privateStateId: alice.psId,
       initialPrivateState: createBountyPrivateState(alice.sk),
-      args: [color.bytes],
+      args: [color.bytes, MIN_REWARD, MIN_WINDOW],
     });
     address = bounty.deployTxData.public.contractAddress;
     for (const p of [alice, bob]) p.prov.privateStateProvider.setContractAddress(address);
@@ -145,15 +150,16 @@ describe(`bounty_signed_record on ${config.networkId}`, () => {
   });
 
   it('pays for an issuer-signed record above the threshold; the poster decrypts it', async () => {
-    const id = new Uint8Array(randomBytes(32));
+    const salt = new Uint8Array(randomBytes(32));
+    const id = pure.bountyIdFor(salt, alice.sk);
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
     const issuerPk = pure.publicKey(issuerSk);
     await call(alice, 'post', 'postBounty', [
-      id, freshCoin(color, REWARD), pure.publicKey(posterKey), issuerPk, SCHEMA, FIELD, THRESHOLD, deadline, TITLE, DETAILS,
+      salt, freshCoin(color, REWARD), pure.publicKey(posterKey), issuerPk, SCHEMA, FIELD, THRESHOLD, deadline, TITLE, DETAILS, postedAt(),
     ]);
     // [schema tag, amount, issued at, subject], signed by the issuer off-chain.
     const record = [SCHEMA, 5000n, BigInt(Math.floor(Date.now() / 1000)), randomScalar()];
-    const signature = signRecord(issuerSk, record);
+    const signature = await signRecord(issuerSk, record);
 
     await syncWallet(logger, bob.wallet.wallet, 600_000);
     const before = await shieldedBalance(bob.wallet, color);
@@ -164,7 +170,7 @@ describe(`bounty_signed_record on ${config.networkId}`, () => {
     const s = await alice.prov.publicDataProvider.queryContractState(address);
     const l = bountySignedRecordLedger(s!.data);
     expect(l.bounties.lookup(id).status).toEqual(Status.SOLVED);
-    expect(l.listings.lookup(id)).toEqual({ title: TITLE, details: DETAILS });
+    expect(l.listings.lookup(id)).toMatchObject({ title: TITLE, details: DETAILS, reward: REWARD });
     expect(pure.decrypt(l.deliveries.lookup(id), posterKey, id)).toEqual(record);
   }, LONG);
 });

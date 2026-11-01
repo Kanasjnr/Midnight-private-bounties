@@ -59,8 +59,13 @@ const config = getConfig();
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
+// The deploy-time minimums. Tests use short deadlines, so no minimum window.
+const MIN_REWARD = 1n;
+const MIN_WINDOW = 0n;
 const TITLE = 'Name the ship in the bottle';
 const DETAILS = 'What was the ship in the bottle on the mantel called? One word, as on its label. ⛵';
+// A minute back, so a block clock running slightly behind can't reject it.
+const postedAt = (): bigint => BigInt(Math.floor(Date.now() / 1000) - 60);
 // D4, D1, D2, D3 and D5 each escrow one reward; D2's and D5's stay locked.
 const BOUNTIES = 5n;
 
@@ -102,7 +107,8 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
   let color: TokenColor;
 
   const posterSeed = new Uint8Array(randomBytes(32)); // derives the poster's key per bounty
-  const D4 = newId();
+  const D4salt = newId(); // D4's ID comes from this salt and Alice's secret
+  let D4: Uint8Array;
   let d4Deadline = 0;
 
   async function query(): Promise<BountyPreimageLedger> {
@@ -130,12 +136,13 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
     return tx;
   }
 
-  async function post(id: Uint8Array, answer: bigint[], deadline: number, label: string) {
+  async function post(salt: Uint8Array, answer: bigint[], deadline: number, label: string) {
+    const id = pure.bountyIdFor(salt, alice.sk);
     const reward = freshCoin(color, REWARD);
     const key = await posterKeyFor(posterSeed, address, id);
-    await call(alice, label, 'postBounty', [id, reward, pure.posterPublicKey(key), pure.answerHash(answer), BigInt(deadline), TITLE, DETAILS]);
+    await call(alice, label, 'postBounty', [salt, reward, pure.posterPublicKey(key), pure.answerHash(answer), BigInt(deadline), TITLE, DETAILS, postedAt()]);
     await syncWallet(logger, alice.wallet.wallet, 600_000);
-    return { reward, key };
+    return { id, reward, key };
   }
 
   beforeAll(async () => {
@@ -172,7 +179,7 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
       compiledContract: CompiledBountyPreimageContract,
       privateStateId: alice.psId,
       initialPrivateState: createBountyPrivateState(alice.sk),
-      args: [color.bytes],
+      args: [color.bytes, MIN_REWARD, MIN_WINDOW],
     });
     address = bounty.deployTxData.public.contractAddress;
     for (const p of [alice, bob, charlie]) p.prov.privateStateProvider.setContractAddress(address);
@@ -201,14 +208,13 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
   it('D4 setup: posts a short-deadline bounty; an early refund is rejected', async () => {
     // Long enough to cover D1 to D3, which run while this deadline passes.
     d4Deadline = nowSec() + 300;
-    await post(D4, randomAnswer(), d4Deadline, 'D4 postBounty');
+    ({ id: D4 } = await post(D4salt, randomAnswer(), d4Deadline, 'D4 postBounty'));
     await expect(call(alice, 'D4 early refund', 'refund', [D4])).rejects.toThrow(/Deadline has not passed/);
   }, LONG);
 
   it('D1: one-transaction submit pays the solver; the poster decrypts; nothing secret is public', async () => {
-    const id = newId();
     const answer = randomAnswer();
-    const { reward, key } = await post(id, answer, nowSec() + 3600, 'D1 postBounty');
+    const { id, reward, key } = await post(newId(), answer, nowSec() + 3600, 'D1 postBounty');
 
     const bobBefore = await balance(bob);
     const stake = freshCoin(color, STAKE);
@@ -219,7 +225,7 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
     const l = await query();
     expect(l.bounties.lookup(id).status).toEqual(Status.SOLVED);
     // The text came through a real transaction, unicode included.
-    expect(l.listings.lookup(id)).toEqual({ title: TITLE, details: DETAILS });
+    expect(l.listings.lookup(id)).toMatchObject({ title: TITLE, details: DETAILS, reward: REWARD });
     expect(l.escrows.member(id)).toBe(false);
     const delivery = l.deliveries.lookup(id);
     expect(pure.decrypt(delivery, key, id)).toEqual(answer);
@@ -242,9 +248,8 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
   }, LONG);
 
   it('D2: a wrong answer is rejected before proving and changes nothing', async () => {
-    const id = newId();
     const answer = randomAnswer();
-    await post(id, answer, nowSec() + 3600, 'D2 postBounty');
+    const { id } = await post(newId(), answer, nowSec() + 3600, 'D2 postBounty');
     const wrong = [...answer];
     wrong[3] += 1n;
     await expect(call(bob, 'D2 wrong answer', 'submit', [id, freshCoin(color, STAKE)], wrong)).rejects.toThrow(/Wrong answer/);
@@ -255,9 +260,8 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
   }, LONG);
 
   it('D3: two solvers race; one is paid, the other keeps their coin', async () => {
-    const id = newId();
     const answer = randomAnswer();
-    await post(id, answer, nowSec() + 3600, 'D3 postBounty');
+    const { id } = await post(newId(), answer, nowSec() + 3600, 'D3 postBounty');
     const bobBefore = await balance(bob);
     const charlieBefore = await balance(charlie);
 
@@ -289,11 +293,10 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
   }, LONG);
 
   it('D5: a submit landing after the deadline is rejected whole; the solver keeps their coin', async () => {
-    const id = newId();
     const answer = randomAnswer();
     // Long enough for the post to land (about 36 s here), short enough that a
     // proven submit (about 65 s) lands after it.
-    await post(id, answer, nowSec() + 60, 'D5 postBounty');
+    const { id } = await post(newId(), answer, nowSec() + 60, 'D5 postBounty');
     const bobBefore = await balance(bob);
 
     let outcome = 'accepted';
@@ -305,7 +308,10 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
       logger.info(`D5: ${outcome}: ${msg.slice(0, 300)}`);
     }
     expect(outcome).not.toEqual('accepted');
-    expect((await balance(bob)) - bobBefore).toEqual(0n);
+    // Right after the node rejects it, the wallet can still count the stake
+    // coin as spent in the failed transaction. It must come back in full.
+    await syncWallet(logger, bob.wallet.wallet, 600_000);
+    expect(await waitForShieldedBalance(bob.wallet, color, bobBefore, { timeoutMs: 180_000, logger })).toEqual(bobBefore);
     const l = await query();
     expect(l.bounties.lookup(id).status).toEqual(Status.OPEN);
     expect(l.deliveries.member(id)).toBe(false);

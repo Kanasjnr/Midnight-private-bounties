@@ -3,7 +3,7 @@
 // cover what this template adds: an in-circuit Schnorr signature check, a
 // schema tag, and a threshold on one field of the record.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Sim, assertNotInPublicState, expectRejects } from '@midnight-ntwrk/example-sim';
 import { Contract, ledger, pureCircuits, Status } from '../../contract/managed/bounty_signed_record/contract/index.js';
 import {
@@ -12,10 +12,13 @@ import {
   randomScalar,
   type SchnorrSignature,
 } from '../../contract/witnesses.js';
-import { JUBJUB_ORDER, signRecord } from '../../contract/signing.js';
+import { hedgedNonce, JUBJUB_ORDER, signRecord } from '../../contract/signing.js';
 
 const REWARD = 100n;
 const STAKE = 10n;
+// The deploy-time minimums. Tests use short deadlines, so no minimum window.
+const MIN_REWARD = 1n;
+const MIN_WINDOW = 0n;
 const TITLE = 'Income of at least 3,000';
 const DETAILS = 'A bank statement record signed by the test issuer, with an amount of at least 3,000.';
 const POSTER_PK = 'b0'.repeat(32);
@@ -51,15 +54,16 @@ function setup(witnesses = bountyWitnesses) {
     contract: new Contract(witnesses),
     ledger,
     privateState: createBountyPrivateState(posterSk),
-    args: [color],
+    args: [color, MIN_REWARD, MIN_WINDOW],
     coinPublicKey: POSTER_PK,
   });
-  const id = rand32();
-  const post = (bountyId: Uint8Array, issuer = issuerPk, field = FIELD) =>
+  const salt = rand32();
+  const id = pureCircuits.bountyIdFor(salt, posterSk);
+  const post = (bountySalt: Uint8Array, issuer = issuerPk, field = FIELD) =>
     sim
       .as(POSTER_PK)
-      .call('postBounty', bountyId, freshCoin(REWARD), pureCircuits.publicKey(posterKey), issuer, SCHEMA, field, THRESHOLD, nowSec() + 3600n, TITLE, DETAILS);
-  post(id);
+      .call('postBounty', bountySalt, freshCoin(REWARD), pureCircuits.publicKey(posterKey), issuer, SCHEMA, field, THRESHOLD, nowSec() + 3600n, TITLE, DETAILS, nowSec());
+  post(salt);
   const submitAs = (record: bigint[], signature: SchnorrSignature) => {
     sim.as(SOLVER_PK).privateState = createBountyPrivateState(solverSk, record, signature);
     return sim.call('submit', id, freshCoin(STAKE));
@@ -68,15 +72,15 @@ function setup(witnesses = bountyWitnesses) {
 }
 
 describe('bounty_signed_record (in memory)', () => {
-  it('pays for an issuer-signed record of the right type that meets the threshold', () => {
+  it('pays for an issuer-signed record of the right type that meets the threshold', async () => {
     const f = setup();
     const record = recordWithAmount(5000n);
-    const signature = signRecord(f.issuerSk, record);
+    const signature = await signRecord(f.issuerSk, record);
     f.submitAs(record, signature);
     const l = f.sim.ledger();
     expect(l.bounties.lookup(f.id).status).toEqual(Status.SOLVED);
     expect(l.bounties.lookup(f.id).schema).toEqual(SCHEMA);
-    expect(l.listings.lookup(f.id)).toEqual({ title: TITLE, details: DETAILS });
+    expect(l.listings.lookup(f.id)).toMatchObject({ title: TITLE, details: DETAILS, reward: REWARD });
     const paid = (f.sim.lastContext?.currentZswapLocalState.outputs ?? []).filter(
       (o) => o.recipient.is_left && hex(o.recipient.left.bytes) === SOLVER_PK && o.coinInfo.value === REWARD + STAKE,
     );
@@ -94,44 +98,48 @@ describe('bounty_signed_record (in memory)', () => {
     assertNotInPublicState(l, secrets);
   });
 
-  it('accepts a record exactly at the threshold', () => {
+  it('accepts a record exactly at the threshold', async () => {
     const f = setup();
     const record = recordWithAmount(THRESHOLD);
-    f.submitAs(record, signRecord(f.issuerSk, record));
+    f.submitAs(record, await signRecord(f.issuerSk, record));
     expect(f.sim.ledger().bounties.lookup(f.id).status).toEqual(Status.SOLVED);
   });
 
-  it('rejects a properly signed record below the threshold', () => {
+  it('rejects a properly signed record below the threshold', async () => {
     const f = setup();
     const record = recordWithAmount(THRESHOLD - 1n);
-    expectRejects(() => f.submitAs(record, signRecord(f.issuerSk, record)), 'Wrong answer');
+    const signature = await signRecord(f.issuerSk, record);
+    expectRejects(() => f.submitAs(record, signature), 'Wrong answer');
     expect(f.sim.ledger().bounties.lookup(f.id).status).toEqual(Status.OPEN);
   });
 
-  it('rejects a record signed by a different issuer', () => {
+  it('rejects a record signed by a different issuer', async () => {
     const f = setup();
     const record = recordWithAmount(5000n);
-    expectRejects(() => f.submitAs(record, signRecord(randomScalar(), record)), 'Invalid attestation signature');
+    const signature = await signRecord(randomScalar(), record);
+    expectRejects(() => f.submitAs(record, signature), 'Invalid attestation signature');
   });
 
-  it('rejects a record changed after signing', () => {
+  it('rejects a record changed after signing', async () => {
     const f = setup();
     const record = recordWithAmount(1000n);
-    const signature = signRecord(f.issuerSk, record);
+    const signature = await signRecord(f.issuerSk, record);
     const inflated = [...record];
     inflated[1] = 5000n;
     expectRejects(() => f.submitAs(inflated, signature), 'Invalid attestation signature');
     expect(f.sim.ledger().deliveries.member(f.id)).toBe(false);
   });
 
-  it("rejects the issuer's signature on another kind of record (audit L4)", () => {
+  it("rejects the issuer's signature on another kind of record (audit L4)", async () => {
     const f = setup();
     // Same issuer, valid signature, but signed for something else: a zk-loan
     // style attestation [score, income, months, user] or another record type.
     const attestation = [720n, 5000n, 36n, randomScalar()];
-    expectRejects(() => f.submitAs(attestation, signRecord(f.issuerSk, attestation)), 'Wrong record type');
+    const attestationSig = await signRecord(f.issuerSk, attestation);
+    expectRejects(() => f.submitAs(attestation, attestationSig), 'Wrong record type');
     const other = recordWithAmount(5000n, SCHEMA + 1n);
-    expectRejects(() => f.submitAs(other, signRecord(f.issuerSk, other)), 'Wrong record type');
+    const otherSig = await signRecord(f.issuerSk, other);
+    expectRejects(() => f.submitAs(other, otherSig), 'Wrong record type');
   });
 
   it('rejects bounties that check the schema tag or a field outside the record', () => {
@@ -173,14 +181,14 @@ describe('bounty_signed_record (in memory)', () => {
 });
 
 describe('issuer signing (audit H1)', () => {
-  it('draws Schnorr nonces uniformly, not from a 248-bit range', () => {
+  it('draws Schnorr nonces uniformly, not from a 248-bit range', async () => {
     const sk = randomScalar();
     const pk = pureCircuits.publicKey(sk);
     let above = 0;
     const n = 300;
     for (let i = 0; i < n; i++) {
       const rec = recordWithAmount(BigInt(i));
-      const { announcement, response } = signRecord(sk, rec);
+      const { announcement, response } = await signRecord(sk, rec);
       const c = pureCircuits.recordChallenge(announcement.x, announcement.y, pk.x, pk.y, rec) % TWO_248;
       const k = (((response - c * sk) % JUBJUB_ORDER) + JUBJUB_ORDER) % JUBJUB_ORDER;
       if (k >= TWO_248) above++;
@@ -188,5 +196,18 @@ describe('issuer signing (audit H1)', () => {
     // A uniform nonce is at least 2^248 about 93% of the time; the old 248-bit
     // nonce never was.
     expect(above / n).toBeGreaterThan(0.85);
+  });
+
+  it('still gives a different nonce per record if the random source repeats (second audit, S3)', async () => {
+    const sk = randomScalar();
+    const spy = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation((a) => a);
+    try {
+      const a = await hedgedNonce(sk, recordWithAmount(1n));
+      const b = await hedgedNonce(sk, recordWithAmount(2n));
+      expect(a).not.toEqual(b);
+      for (const k of [a, b]) expect(k > 0n && k < JUBJUB_ORDER).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

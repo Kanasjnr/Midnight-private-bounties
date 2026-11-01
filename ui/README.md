@@ -42,6 +42,16 @@ verification checklist.
   stored on chain in the contract's `listings` map and shown on the board.
   Both are public. The contract sets no length limit, so the page does
   (`listingError`: 80 characters for the title, 1,000 for the question).
+  The listing also keeps the reward, so a solved or refunded bounty still
+  shows what it paid, and the post time (`postTime`: the browser's clock
+  minus a minute, rounded down to 5 minutes, which the contract checks against
+  block time).
+- **Deploy-time minimums and bounty IDs.** The UI deploys with a minimum
+  reward of 10 and a minimum open window of 30 minutes (`MIN_REWARD`,
+  `MIN_WINDOW`), and `postError` checks both before posting. A bounty's ID is
+  derived from a fresh salt and the poster's secret (`bountyIdFor`), so a
+  pending post can't be front-run with its own ID. See
+  `docs/security-audit-2.md`.
 - **Pre-checks.** Every solve, refund and decrypt check on the board comes
   from `actionError`, which `src/__tests__/private-bounties-circuits.test.ts`
   checks against the real compiled circuit, in memory, over the whole flow.

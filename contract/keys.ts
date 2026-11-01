@@ -14,7 +14,12 @@ const encoder = new TextEncoder();
  */
 export async function posterKeyFor(seed: Uint8Array, contractAddress: string, id: Uint8Array): Promise<bigint> {
   if (seed.length !== 32) throw new Error('The poster seed must be 32 bytes');
-  const parts = [seed, encoder.encode('pb:enc'), encoder.encode(contractAddress), id];
+  if (id.length !== 32) throw new Error('The bounty ID must be 32 bytes');
+  // The same address can be written with a 0x prefix or in upper case; both
+  // must give the key the bounty was posted with (second audit, S2).
+  const address = contractAddress.trim().toLowerCase().replace(/^0x/, '');
+  if (!/^[0-9a-f]+$/.test(address)) throw new Error('The contract address must be hex');
+  const parts = [seed, encoder.encode('pb:enc'), encoder.encode(address), id];
   const input = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let offset = 0;
   for (const p of parts) {

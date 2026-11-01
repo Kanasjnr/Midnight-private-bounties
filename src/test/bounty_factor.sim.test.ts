@@ -9,6 +9,9 @@ import { bountyWitnesses, createBountyPrivateState, randomScalar } from '../../c
 
 const REWARD = 100n;
 const STAKE = 10n;
+// The deploy-time minimums. Most tests use short deadlines, so no minimum window.
+const MIN_REWARD = 1n;
+const MIN_WINDOW = 0n;
 const TITLE = 'Factor a 62-bit number';
 const DETAILS = 'N is the product of two primes. Send p and q.';
 const POSTER_PK = 'b0'.repeat(32);
@@ -48,11 +51,12 @@ function setup(n: bigint = N) {
     contract: new Contract(bountyWitnesses),
     ledger,
     privateState: createBountyPrivateState(posterSk),
-    args: [color],
+    args: [color, MIN_REWARD, MIN_WINDOW],
     coinPublicKey: POSTER_PK,
   });
-  const id = rand32();
-  sim.call('postBounty', id, freshCoin(REWARD), pureCircuits.posterPublicKey(posterKey), n, nowSec() + 3600n, TITLE, DETAILS);
+  const salt = rand32();
+  const id = pureCircuits.bountyIdFor(salt, posterSk);
+  sim.call('postBounty', salt, freshCoin(REWARD), pureCircuits.posterPublicKey(posterKey), n, nowSec() + 3600n, TITLE, DETAILS, nowSec());
   const submitAs = (answer: bigint[]) => {
     sim.as(SOLVER_PK).privateState = createBountyPrivateState(solverSk, answer);
     return sim.call('submit', id, freshCoin(STAKE));
@@ -67,7 +71,7 @@ describe('bounty_factor (in memory)', () => {
     const l = f.sim.ledger();
     expect(l.bounties.lookup(f.id).status).toEqual(Status.SOLVED);
     expect(l.bounties.lookup(f.id).target).toEqual(N);
-    expect(l.listings.lookup(f.id)).toEqual({ title: TITLE, details: DETAILS });
+    expect(l.listings.lookup(f.id)).toMatchObject({ title: TITLE, details: DETAILS, reward: REWARD });
     const paid = (f.sim.lastContext?.currentZswapLocalState.outputs ?? []).filter(
       (o) => o.recipient.is_left && hex(o.recipient.left.bytes) === SOLVER_PK && o.coinInfo.value === REWARD + STAKE,
     );
