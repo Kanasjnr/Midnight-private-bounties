@@ -1,0 +1,25 @@
+{
+  "name": "@midnight-ntwrk/example-reviewed-work-spike",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "compile": "compact compile +0.31.1 contract/reviewed_work.compact contract/managed/reviewed_work",
+    "compile:fast": "compact compile +0.31.1 --skip-zk contract/reviewed_work.compact contract/managed/reviewed_work",
+    "typecheck": "tsc --noEmit -p .",
+    "test:sim": "vitest run --passWithNoTests .sim.test.ts"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/example-sim": "workspace:^",
+    "@midnight-ntwrk/midnight-js-protocol": "4.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0"
+  },
+  "description": "Spike Q13: reviewed work, in memory only (not an example)"
+}

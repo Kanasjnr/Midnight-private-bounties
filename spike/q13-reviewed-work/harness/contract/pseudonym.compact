@@ -1,0 +1,15 @@
+// Per-bounty pseudonyms for Private Bounties.
+//
+// This file is a MODULE: `import "pseudonym" prefix Pseudonym_;`.
+
+module pseudonym {
+  import CompactStandardLibrary;
+
+  // The public pseudonym for secret key `sk` on bounty `id`, under `domain`
+  // (for example "bounty:poster"). The bounty id is mixed in so a poster's
+  // bounties can't be linked to each other through it, and kernel.self() so
+  // the same key gives unrelated pseudonyms in different deployments.
+  export circuit derive(domain: Bytes<32>, id: Bytes<32>, sk: Bytes<32>): Bytes<32> {
+    return persistentHash<Vector<4, Bytes<32>>>([domain, kernel.self().bytes, id, sk]);
+  }
+}
