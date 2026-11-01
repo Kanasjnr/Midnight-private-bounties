@@ -307,7 +307,10 @@ describe(`bounty_preimage on ${config.networkId}`, () => {
       logger.info(`D5: ${outcome}: ${msg.slice(0, 300)}`);
     }
     expect(outcome).not.toEqual('accepted');
-    expect((await balance(bob)) - bobBefore).toEqual(0n);
+    // Right after the node rejects it, the wallet can still count the stake
+    // coin as spent in the failed transaction. It must come back in full.
+    await syncWallet(logger, bob.wallet.wallet, 600_000);
+    expect(await waitForShieldedBalance(bob.wallet, color, bobBefore, { timeoutMs: 180_000, logger })).toEqual(bobBefore);
     const l = await query();
     expect(l.bounties.lookup(id).status).toEqual(Status.OPEN);
     expect(l.deliveries.member(id)).toBe(false);
