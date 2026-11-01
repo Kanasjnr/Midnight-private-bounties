@@ -42,8 +42,12 @@ export struct Listing {
   postedAt: Uint<64>;       // when it was posted: block time, to within 15 minutes
 }
 
-// The token rewards are paid in. Set once, at deploy time.
+// The token rewards are paid in, the smallest reward, and how long a bounty
+// must stay open. Set once, at deploy time. The last two make spam lock up
+// capital for a while (second audit, L1).
 export sealed ledger rewardColor: Bytes<32>;
+export sealed ledger minReward: Uint<128>;
+export sealed ledger minWindow: Uint<64>;
 export ledger bounties: Map<Bytes<32>, Bounty>;
 // Kept apart from `bounties`, which `submit` and `refund` rewrite, so the text
 // is only written once.
@@ -61,8 +65,10 @@ witness answer(): Vector<4, Field>;
 // Fresh for every submission. 248 bits keeps it below the Jubjub order.
 witness ephemeralScalar(): Uint<248>;
 
-constructor(color: Bytes<32>) {
+constructor(color: Bytes<32>, minimumReward: Uint<128>, minimumWindow: Uint<64>) {
   rewardColor = disclose(color);
+  minReward = disclose(minimumReward);
+  minWindow = disclose(minimumWindow);
 }
 
 // The checker for this template.
@@ -90,23 +96,31 @@ export pure circuit decrypt(d: Delivery, b: Field, id: Bytes<32>): Vector<4, Fie
   return Cipher_decrypt4(d.c, Ecdh_sharedKey(b, d.ephemeralPk, context), context);
 }
 
+// A bounty's ID from the poster's salt and secret key (second audit, L3).
+export pure circuit bountyIdFor(salt: Bytes<32>, sk: Bytes<32>): Bytes<32> {
+  return Pseudonym_bountyId(salt, sk);
+}
+
 // ---- Circuits ----
 
-export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: JubjubPoint,
+export circuit postBounty(salt: Bytes<32>, reward: ShieldedCoinInfo, posterPk: JubjubPoint,
                           target: Field, deadline: Uint<64>,
                           title: Opaque<"string">, details: Opaque<"string">,
                           postedAt: Uint<64>): [] {
-  const bountyId = disclose(id);
+  const sk = localSecretKey();
+  const bountyId = disclose(Pseudonym_bountyId(salt, sk));
   assert(!bounties.member(bountyId), "Bounty already exists");
   Deadline_assertOpen(disclose(deadline));
   Deadline_assertRecent(disclose(postedAt));
+  Deadline_assertWindow(disclose(postedAt), disclose(deadline), minWindow);
   Ecdh_assertValidPublicKey(disclose(posterPk));
 
   assert(disclose(reward.value) > 0, "Reward has no value");
+  assert(disclose(reward.value) >= minReward, "Reward is below the minimum");
   Escrow_receiveFresh(reward, rewardColor);
   escrows.insertCoin(bountyId, disclose(reward), right<ZswapCoinPublicKey, ContractAddress>(kernel.self()));
   bounties.insert(bountyId, Bounty {
-    poster: disclose(Pseudonym_derive(pad(32, "bounty:poster"), bountyId, localSecretKey())),
+    poster: disclose(Pseudonym_derive(pad(32, "bounty:poster"), bountyId, sk)),
     posterPk: disclose(posterPk),
     target: disclose(target),
     deadline: disclose(deadline),

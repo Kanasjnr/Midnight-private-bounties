@@ -23,4 +23,9 @@ module deadline {
     assert(blockTimeGte(t), "Post time is in the future");
     assert(blockTimeLt((t + 900) as Uint<64>), "Post time is too old");
   }
+
+  // Passes when `deadline` is at least `window` seconds after `start`.
+  export circuit assertWindow(start: Uint<64>, deadline: Uint<64>, window: Uint<64>): [] {
+    assert(deadline >= (start + window) as Uint<64>, "Deadline is too soon");
+  }
 }
