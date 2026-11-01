@@ -1,8 +1,8 @@
 # Private Bounties on Midnight: Architecture
 
-**Status:** draft v0.6, 2026-10-28. Updated with the spike results (every question in section 18
-is answered or decided; Q6 still needs a Lace run) and the fixes from the first security audit
-([report](docs/security-audit.md)). Anything still marked 🔬 is unproven. Code blocks
+**Status:** draft v0.7, 2026-10-31. Updated with the spike results (every question in section 18
+is answered or decided; Q6 still needs a Lace run), the fixes from the first security audit
+([report](docs/security-audit.md)), and a title and question for every bounty (section 7). Anything still marked 🔬 is unproven. Code blocks
 are **pseudocode, not Compact**. Midnight-specific facts were checked against the Compact
 standard library at `compactc-v0.31.1` and against
 [midnight-examples](https://github.com/midnightntwrk/midnight-examples) at `cb250c9`.
@@ -143,8 +143,15 @@ bounties:   Map<BountyId, {
               status:   OPEN | SOLVED | REFUNDED }>
 escrows:    Map<BountyId, QualifiedShieldedCoinInfo>   // v1: public, a fresh coin, via insertCoin
 deliveries: Map<BountyId, { E: JubjubPoint, c: Vector<N, Field> }>
+listings:   Map<BountyId, { title: Opaque<"string">, details: Opaque<"string"> }>
 rewardColor: sealed Bytes<32>                          // accepted reward token, set at deploy
 ```
+
+A bounty's title and question (`details`) live in `listings`, apart from `bounties`. `postBounty`
+writes them once. `submit` and `refund` rewrite the bounty record to change its status, and
+would carry the text along each time if it lived there. No circuit checks the text, and the
+contract sets no length limit. The UI caps the title at 80 characters and the question at 1,000,
+because every character is public and paid for in the transaction.
 
 In `bounty_preimage` the checker's parameter is `target: Field`; `bounty_factor` stores its N in
 the same slot. `bounty_signed_record` replaces it with `issuerPk: JubjubPoint`, `field: Uint<8>`
@@ -155,7 +162,7 @@ and `threshold: Uint<64>`. In every template the payload is four field elements
 
 | Circuit | Caller | What the proof shows | Public effects |
 |---|---|---|---|
-| `postBounty` | Poster | Poster pseudonym comes from their secret and this bounty's ID; the coin has the reward color and a non-zero value; the deadline is still ahead; the poster's key (and in signed-record, the issuer's) is on the curve, in the prime-order subgroup and not the identity | Bounty record and escrow coin |
+| `postBounty` | Poster | Poster pseudonym comes from their secret and this bounty's ID; the coin has the reward color and a non-zero value; the deadline is still ahead; the poster's key (and in signed-record, the issuer's) is on the curve, in the prime-order subgroup and not the identity | Bounty record, escrow coin, title and question |
 | `submit` | Solver | Checker passes, ECDH is correct, c encrypts the answer, before the deadline. Receives the solver's fresh coin, which may be worth zero, and merges it first | `E`, `c`, status `SOLVED`, one shielded payout: reward plus the solver's coin |
 | `refund` | Poster | Pseudonym matches; deadline passed; still `OPEN` | Status `REFUNDED`, escrow returned |
 | `answerHash`, `checkAnswer` (pure) | Browser | No proof: runs in JS | None: builds a bounty's target, and pre-checks an answer before paying for a proof |
@@ -186,6 +193,7 @@ the two-step version is no longer needed.
 | Escrow `submit` (merge + payout) | 16 | about 100 s to 134 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | `postBounty`, `refund` | 15 | about 40 s to 67 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | **Full `submit`**: checker + key exchange + encryption + escrow | **16** | **about 11 s to prove (idle runner)**; 43 s (loaded laptop) | [Q11](spike/q11-full-submit/RESULTS.md) |
+| Title and question on `postBounty` | 15, unchanged | The prover key grew by 85 bytes (11,017,896 to 11,017,981). The text's length doesn't change the circuit; it only adds to the transaction | `bounty_preimage`, compiled with keys on 0.31.1, 2026-10-31 |
 
 **Coin handling, not cryptography, sets the cost.** Every coin operation hashes commitments and
 nullifiers with SHA-256 inside the standard library. The full `submit` (checker, key exchange,
@@ -294,7 +302,7 @@ flowchart TD
   B -->|yes| C["Bounty board"]
   C --> D["Post a bounty"]
   D --> D1["Pick a checker template"]
-  D1 --> D2["Enter parameters, reward, deadline"]
+  D1 --> D2["Enter a title, the question, parameters, reward, deadline"]
   D2 --> D3["Review screen:<br/>what goes public, what stays private"]
   D3 --> D4["Approve in wallet"]
   D4 --> E["My bounties"]
@@ -309,7 +317,7 @@ flowchart TD
 ```mermaid
 flowchart TD
   A(["Open the app"]) --> B["Bounty board"]
-  B --> C["Bounty detail:<br/>checker, parameters, reward, deadline"]
+  B --> C["Bounty detail:<br/>title, question, checker, parameters, reward, deadline"]
   C --> D["Enter an answer"]
   D --> E{"Pure checker passes<br/>locally?"}
   E -->|no| D
@@ -327,7 +335,7 @@ flowchart TD
 | Bounty board | Indexer subscription on the template contracts | `indexerPublicDataProvider`, contract state stream |
 | Post a bounty | Form, then a `postBounty` transaction | DApp Connector, proof server |
 | "What goes public" review | Static, per template | Selective disclosure, made visible |
-| Bounty detail | Ledger state | Public params, deadline countdown from block time |
+| Bounty detail | Ledger state: the bounty record and its listing (title and question) | Public params, deadline countdown from block time |
 | Solve | Pure checker, then one `submit`, with progress shown: proving alone takes about 11 s on an idle machine, and the whole call took 2.5 minutes in the Q6 browser run on a loaded laptop, wallet approval included | Local proving, witnesses, shielded coins |
 | My bounties / inbox | Ledger state and private state | Private state store, pure-circuit decryption |
 | Refund | `refund` transaction | Block time |
@@ -346,7 +354,7 @@ sequenceDiagram
   participant W as Wallet
   participant N as Node
   participant I as Indexer
-  P->>UI: Template, parameters, reward, deadline
+  P->>UI: Template, title, question, parameters, reward, deadline
   UI->>St: Load or create poster secret and key b
   UI->>UI: posterPk = b·G, fresh reward coin info with a random nonce
   UI->>UI: Run postBounty in the JS runtime (witnesses read private state)
@@ -506,6 +514,7 @@ flowchart LR
 | Data | Who can see it |
 |---|---|
 | The answer | Solver; poster after decryption. On-chain only as ciphertext |
+| Title and question | Public, and permanent: written once at post time, never changed or removed |
 | Checker parameters, deadline | Public |
 | Reward amount (open bounty) | Public, by design |
 | Escrow coin (open bounty) | Public: nonce, value and tree position. A fresh coin, so it doesn't point at the poster's wallet |
@@ -541,6 +550,7 @@ flowchart LR
 | A signature made for another app | Signed-record bounties pin a schema tag in `record[0]`, so a zk-loan attestation from the same issuer doesn't qualify |
 | A submit that lands after the deadline | Rejected whole, with the solver's coin left in their wallet (devnet test D5). The UI warns near the deadline, because a submit takes minutes to prove, approve and land (2.5 minutes in the Q6 browser run) |
 | A wallet or hosted prover sees the proof's inputs | The app proves locally by default. Choosing wallet proving shows a warning first, because the wallet, or the hosted service it may use, sees the secret inputs: the poster's identity secret, or the solver's answer and coin (Q10) |
+| The title or question identifies the poster | The text is public and permanent, and the same writing style or details across bounties can link them, which the per-bounty pseudonym otherwise prevents. The post screen's review step shows the text under "what goes public" |
 | Bounty ID squatting | Someone who sees a pending ID can post first with the same ID ("Bounty already exists"). Denial of service only; the app retries with a fresh ID |
 | Poster loses key `b` | An encrypted backup or export of the private state |
 | `transientHash` changes at a hard fork | The poster's app decrypts as soon as a bounty is solved, keeps the plaintext, and pins its runtime version |
