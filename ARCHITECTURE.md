@@ -129,7 +129,7 @@ Submitted or approved work is never refundable.
 | Payout | `approve` only changes the status. The contributor's `collect` receives a fresh coin of their own (it may be worth zero) and merges it first, as `submit` does (Q3), and pays reward plus coin to the caller. Unlinkability needs the Q2 leak checks on a devnet 🔬 |
 | Arbiter | Optional, named at post time, with the same id on every bounty because it's a known party. Its only power is to overturn a rejection within the appeal window. Without an arbiter, a rejection reopens the work at once |
 | Locked rewards | Submitted work can't be refunded, so a contributor who submits and never collects leaves the reward locked for good. Fix: a long collect-by limit (for example 90 days after review-by), after which the poster can take it back. Not built yet |
-| Squatting | In first-to-claim mode, one person can claim, let the window run out, and claim again, keeping a bounty blocked for one fee per window. Possible fixes: make applicant mode the default, let the poster release a first-to-claim assignment while nothing has been submitted, or ask for a small claim deposit. Undecided 🔬 |
+| Squatting | In first-to-claim mode, one person can claim, let the window run out, and claim again, keeping a bounty blocked for one fee per window. **Decided (2026-11-01):** no claim deposit, so contributors never need tokens up front. Instead, applicant mode, where the poster picks, is the default, and first to claim is an option for small, well-defined tasks. In first-to-claim mode the poster can also `release` an assignment while nothing has been submitted, which reopens it. The trade-off is that a contributor released before submitting loses their effort, though no funds. `release` isn't built yet |
 | Messages | Encrypted between the poster's and the contributor's per-bounty keys. Storage is open: on chain costs DUST per message, and off chain needs a relay 🔬 |
 | Reminders | Worked out in the browser from the windows in public state, with no bot or server |
 
@@ -626,7 +626,7 @@ flowchart LR
 | Reviewed work: the poster never reviews | The review clock: once it runs out, the contributor collects without an approval |
 | Reviewed work: the poster rejects good work | The optional arbiter can overturn it. Without one, the contributor trusts the poster, as on today's bounty programs, but can't be ghosted |
 | Reviewed work: a contributor claims and never delivers | The assignment ends with the delivery window, and anyone can `reopen` the bounty |
-| Reviewed work: someone keeps re-claiming to block a bounty | Open (section 5, "Squatting"). Applicant mode isn't affected |
+| Reviewed work: someone keeps re-claiming to block a bounty | Applicant mode, the default, isn't affected. In first-to-claim mode the poster can `release` an assignment that hasn't submitted (section 5, "Squatting") |
 | Reviewed work: a contributor submits and never collects | Planned collect-by limit, after which the poster can take the reward back (section 5) |
 | Reviewed work: someone copies a submission | Submissions are encrypted to the poster, so there's nothing public to copy |
 | Reviewed work: the arbiter sides with the poster unfairly | A stated trust assumption: the arbiter is named at post time, so contributors can choose not to apply |
