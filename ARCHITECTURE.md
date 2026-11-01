@@ -1,8 +1,8 @@
 # Private Bounties on Midnight: Architecture
 
-**Status:** draft v0.8, 2026-11-01. Updated with the spike results (Q1 to Q12 are answered or
+**Status:** draft v0.9, 2026-11-01. Updated with the spike results (Q1 to Q12 are answered or
 decided; Q6 still needs a Lace run), the fixes from the first security audit
-([report](docs/security-audit.md)), a title and question for every bounty (section 7), and a
+([report](docs/security-audit.md)) and the second ([report](docs/security-audit-2.md)), a title and question for every bounty (section 7), and a
 second mode, **reviewed work**, for bounties a person has to judge (section 5; spike Q13 passed in
 memory). Anything still marked 🔬 is unproven. Code blocks
 are **pseudocode, not Compact**. Midnight-specific facts were checked against the Compact
@@ -203,13 +203,23 @@ deliveries: Map<BountyId, { E: JubjubPoint, c: Vector<N, Field> }>
 listings:   Map<BountyId, { title: Opaque<"string">, details: Opaque<"string">,
                             reward: Uint<128>, postedAt: Uint<64> }>
 rewardColor: sealed Bytes<32>                          // accepted reward token, set at deploy
+minReward:   sealed Uint<128>                          // smallest reward, set at deploy
+minWindow:   sealed Uint<64>                           // shortest time a bounty stays open, set at deploy
+// BountyId = persistentHash("bounty:id", salt, sk): derived in postBounty from a secret salt and
+// the poster's identity secret, so nobody else can post under it
 ```
 
 A bounty's title and question (`details`) live in `listings`, apart from `bounties`. `postBounty`
 writes them once. `submit` and `refund` rewrite the bounty record to change its status, and
-would carry the text along each time if it lived there. No circuit checks the text, and the
-contract sets no length limit. The UI caps the title at 80 characters and the question at 1,000,
-because every character is public and paid for in the transaction.
+would carry the text along each time if it lived there. No circuit checks the text: a circuit
+can't read an `Opaque` string's length. The ledger caps any one cell at 32,768 bytes, which
+bounds a listing. The UI caps the title at 80 characters and the question at 1,000, because every
+character is public and paid for in the transaction.
+
+Listings are permanent, so each deployment sets a **minimum reward** and a **minimum open
+window**. `postBounty` checks the reward is at least `minReward`, and the deadline at least
+`minWindow` after the post time. A spam post then locks capital for the window, not only fees
+(second audit, L1). The UI deploys with a minimum of 10 and 30 minutes.
 
 The listing also keeps the **reward** and the **post time**, so the board can show what a solved
 or refunded bounty paid, and when it was posted, from current state alone (Q14). The reward is
@@ -217,7 +227,8 @@ the escrowed coin's value; the escrow entry itself is deleted on payout. The pos
 passed by the poster and checked against block time with `Deadline_assertRecent`: it must lie
 between 15 minutes before the block time and the block time, which leaves room for proving,
 approval and landing (Q6 took up to 2.5 minutes). The UI passes its clock minus a minute, so a
-block clock running slightly behind can't reject it.
+block clock running slightly behind can't reject it, rounded down to 5 minutes, so a device whose
+clock is off doesn't leave the same offset on every bounty it posts (second audit, L2).
 
 In `bounty_preimage` the checker's parameter is `target: Field`; `bounty_factor` stores its N in
 the same slot. `bounty_signed_record` replaces it with `issuerPk: JubjubPoint`, `field: Uint<8>`
@@ -228,7 +239,7 @@ and `threshold: Uint<64>`. In every template the payload is four field elements
 
 | Circuit | Caller | What the proof shows | Public effects |
 |---|---|---|---|
-| `postBounty` | Poster | Poster pseudonym comes from their secret and this bounty's ID; the coin has the reward color and a non-zero value; the deadline is still ahead; the poster's key (and in signed-record, the issuer's) is on the curve, in the prime-order subgroup and not the identity; the post time is within 15 minutes before the block time | Bounty record, escrow coin, and a listing: title, question, reward, post time |
+| `postBounty` | Poster | The bounty ID comes from a secret salt and the poster's identity secret; the poster pseudonym comes from that secret and the ID; the reward is at least `minReward` and the deadline at least `minWindow` after the post time; the coin has the reward color and a non-zero value; the deadline is still ahead; the poster's key (and in signed-record, the issuer's) is on the curve, in the prime-order subgroup and not the identity; the post time is within 15 minutes before the block time | Bounty record, escrow coin, and a listing: title, question, reward, post time |
 | `submit` | Solver | Checker passes, ECDH is correct, c encrypts the answer, before the deadline. Receives the solver's fresh coin, which may be worth zero, and merges it first | `E`, `c`, status `SOLVED`, one shielded payout: reward plus the solver's coin |
 | `refund` | Poster | Pseudonym matches; deadline passed; still `OPEN` | Status `REFUNDED`, escrow returned |
 | `answerHash`, `checkAnswer` (pure) | Browser | No proof: runs in JS | None: builds a bounty's target, and pre-checks an answer before paying for a proof |
@@ -265,6 +276,7 @@ the two-step version is no longer needed.
 | Reviewed work `reopen` | 9 | Not measured | [Q13](spike/q13-reviewed-work/RESULTS.md) |
 | Title and question on `postBounty` | 15, unchanged | The prover key grew by 85 bytes (11,017,896 to 11,017,981). The text's length doesn't change the circuit; it only adds to the transaction | `bounty_preimage`, compiled with keys on 0.31.1, 2026-10-31 |
 | Reward and post time in the listing | 15, unchanged | The prover key grew by another 291 bytes, to 11,018,272; `refund` and `submit` are unchanged | `bounty_preimage`, compiled with keys on 0.31.1, 2026-11-01 |
+| Second-audit fixes: the ID derived in the circuit, the minimum reward and window | 15, unchanged | `postBounty`'s prover key grew by about 7 KB (11,018,272 to 11,025,538 in preimage), one more `persistentHash`. `submit` and `refund` are unchanged in all three templates | All three templates, compiled with keys on 0.31.1, 2026-11-01 |
 
 **Coin handling, not cryptography, sets the cost.** Every coin operation hashes commitments and
 nullifiers with SHA-256 inside the standard library. The full `submit` (checker, key exchange,
@@ -589,7 +601,8 @@ flowchart LR
 | Data | Who can see it |
 |---|---|
 | The answer | Solver; poster after decryption. On-chain only as ciphertext |
-| Title and question, reward, post time | Public, and permanent: written once at post time, never changed or removed |
+| Title and question, reward, post time | Public, and permanent: written once at post time, never changed or removed. The post time is rounded to 5 minutes |
+| Bounty ID | Public, but derived from a secret salt, so it can't be linked to the poster or to their other bounties |
 | Checker parameters, deadline | Public |
 | Reward amount (open bounty) | Public, by design |
 | Escrow coin (open bounty) | Public: nonce, value and tree position. A fresh coin, so it doesn't point at the poster's wallet |
@@ -629,7 +642,9 @@ flowchart LR
 | A submit that lands after the deadline | Rejected whole, with the solver's coin left in their wallet (devnet test D5). The UI warns near the deadline, because a submit takes minutes to prove, approve and land (2.5 minutes in the Q6 browser run) |
 | A wallet or hosted prover sees the proof's inputs | The app proves locally by default. Choosing wallet proving shows a warning first, because the wallet, or the hosted service it may use, sees the secret inputs: the poster's identity secret, or the solver's answer and coin (Q10) |
 | The title or question identifies the poster | The text is public and permanent, and the same writing style or details across bounties can link them, which the per-bounty pseudonym otherwise prevents. The post screen's review step shows the text under "what goes public" |
-| Bounty ID squatting | Someone who sees a pending ID can post first with the same ID ("Bounty already exists"). Denial of service only; the app retries with a fresh ID |
+| Bounty ID squatting | Fixed in the second audit (L3). `postBounty` derives the ID in the circuit from a secret salt and the poster's identity secret, so someone who copies a pending post gets a different ID and the poster's post still lands |
+| Board spam | Listings are permanent and up to the ledger's 32 KiB cell each. A deploy-time minimum reward and minimum open window make each post lock capital, not only fees (second audit, L1) |
+| A misleading listing | The text is the poster's word, not checked. The app shows the on-chain parameters as the authoritative ones, and a wrong answer is rejected before anything is proved, so a solver loses effort, not funds (second audit, S1, planned) |
 | Poster loses key `b` | An encrypted backup or export of the private state |
 | `transientHash` changes at a hard fork | The poster's app decrypts as soon as a bounty is solved, keeps the plaintext, and pins its runtime version |
 | A buyer re-shares purchased data (v2) | Inherent to selling data. Out of scope |

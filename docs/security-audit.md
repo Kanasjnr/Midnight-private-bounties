@@ -33,6 +33,9 @@ witnesses and issuer signing helper. Compact 0.31.1, language version 0.23.
 
 No Critical findings.
 
+A [second audit](security-audit-2.md), on 2026-11-01, rechecked every fix above. It also
+supersedes S5: bounty IDs are now derived in the circuit, so a retry is no longer the defense.
+
 ## High
 
 **H1: biased issuer nonces** (`contract/signing.ts`).
