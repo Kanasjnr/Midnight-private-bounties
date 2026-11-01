@@ -15,4 +15,12 @@ module deadline {
   export circuit assertExpired(deadline: Uint<64>): [] {
     assert(blockTimeGte(deadline), "Deadline has not passed");
   }
+
+  // Passes when `t` is the block time or up to 15 minutes before it. A poster
+  // passes the time they post at; the 15 minutes cover proving, approval in
+  // the wallet and landing in a block.
+  export circuit assertRecent(t: Uint<64>): [] {
+    assert(blockTimeGte(t), "Post time is in the future");
+    assert(blockTimeLt((t + 900) as Uint<64>), "Post time is too old");
+  }
 }

@@ -33,10 +33,13 @@ export struct Delivery {
 }
 
 // What the board shows. Public, written once when the bounty is posted and
-// never changed. No circuit checks it.
+// never changed. Nothing checks the text; the reward is the escrowed coin's
+// value, and the post time is checked against block time.
 export struct Listing {
   title: Opaque<"string">;
   details: Opaque<"string">; // for this template, the question
+  reward: Uint<128>;        // the reward as posted, still readable once it's paid out
+  postedAt: Uint<64>;       // when it was posted: block time, to within 15 minutes
 }
 
 // The token rewards are paid in. Set once, at deploy time.
@@ -91,10 +94,12 @@ export pure circuit decrypt(d: Delivery, b: Field, id: Bytes<32>): Vector<4, Fie
 
 export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: JubjubPoint,
                           target: Field, deadline: Uint<64>,
-                          title: Opaque<"string">, details: Opaque<"string">): [] {
+                          title: Opaque<"string">, details: Opaque<"string">,
+                          postedAt: Uint<64>): [] {
   const bountyId = disclose(id);
   assert(!bounties.member(bountyId), "Bounty already exists");
   Deadline_assertOpen(disclose(deadline));
+  Deadline_assertRecent(disclose(postedAt));
   Ecdh_assertValidPublicKey(disclose(posterPk));
 
   assert(disclose(reward.value) > 0, "Reward has no value");
@@ -107,7 +112,10 @@ export circuit postBounty(id: Bytes<32>, reward: ShieldedCoinInfo, posterPk: Jub
     deadline: disclose(deadline),
     status: Status.OPEN
   });
-  listings.insert(bountyId, Listing { title: disclose(title), details: disclose(details) });
+  listings.insert(bountyId, Listing {
+    title: disclose(title), details: disclose(details),
+    reward: disclose(reward.value), postedAt: disclose(postedAt)
+  });
 }
 
 // One transaction for the solver: the checker, the encrypted delivery and the
