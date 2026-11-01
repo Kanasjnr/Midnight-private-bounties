@@ -42,6 +42,9 @@ verification checklist.
   stored on chain in the contract's `listings` map and shown on the board.
   Both are public. The contract sets no length limit, so the page does
   (`listingError`: 80 characters for the title, 1,000 for the question).
+  The listing also keeps the reward, so a solved or refunded bounty still
+  shows what it paid, and the post time (`postTime`: the browser's clock
+  minus a minute, which the contract checks against block time).
 - **Pre-checks.** Every solve, refund and decrypt check on the board comes
   from `actionError`, which `src/__tests__/private-bounties-circuits.test.ts`
   checks against the real compiled circuit, in memory, over the whole flow.

@@ -214,7 +214,7 @@ async function writePrivateState(
 export type CircuitArgs<K extends keyof Contract["provableCircuits"]> =
   Parameters<Contract["provableCircuits"][K]> extends [unknown, ...infer A] ? A : never;
 
-/** Circuit `postBounty(id, reward, posterPk, target, deadline, title, details)`. */
+/** Circuit `postBounty(id, reward, posterPk, target, deadline, title, details, postedAt)`. */
 export async function postBounty(
   contract: PrivateBountiesContract,
   ...args: CircuitArgs<"postBounty">
@@ -251,6 +251,15 @@ export function listingError(title: string, details: string): string | null {
   if (d === "") return "Write the question";
   if ([...d].length > DETAILS_MAX) return `Question is over ${DETAILS_MAX} characters`;
   return null;
+}
+
+/**
+ * The post time to record: a minute before the browser's clock, so a block
+ * clock running slightly behind can't reject it. The contract accepts anything
+ * from 15 minutes before the block time up to the block time.
+ */
+export function postTime(nowMs: number = Date.now()): bigint {
+  return BigInt(Math.floor(nowMs / 1000) - 60);
 }
 
 /** What a poster fills in. `deadline` is in seconds since the Unix epoch (block time). */
@@ -292,6 +301,7 @@ export async function postNewBounty(
     input.deadline,
     input.title.trim(),
     input.details.trim(),
+    postTime(),
   );
   return { id, tx };
 }
@@ -400,8 +410,10 @@ export interface BountyView {
   status: Status;
   /** Seconds since the Unix epoch. */
   deadline: bigint;
+  /** When it was posted, in seconds since the Unix epoch, to within 15 minutes. */
+  postedAt: bigint | null;
   target: bigint;
-  /** The escrowed reward while the bounty is open; null once paid out. */
+  /** The reward as posted, kept after it's paid out or refunded. */
   reward: bigint | null;
   /** Posted from this browser's identity secret. */
   mine: boolean;
@@ -423,8 +435,9 @@ export function bountyViews(
       details: listing?.details ?? "",
       status: b.status,
       deadline: b.deadline,
+      postedAt: listing?.postedAt ?? null,
       target: b.target,
-      reward: state.escrows.member(id) ? state.escrows.lookup(id).value : null,
+      reward: listing?.reward ?? (state.escrows.member(id) ? state.escrows.lookup(id).value : null),
       mine: ps !== null && sameBytes(posterPseudonym(address, id, ps.sk), b.poster),
     });
   }

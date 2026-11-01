@@ -40,6 +40,7 @@ import {
   DETAILS_MAX,
   encodeAnswer,
   listingError,
+  postTime,
   TITLE_MAX,
   freshCoin,
   newPrivateState,
@@ -105,7 +106,7 @@ async function post(board: Board, poster: PS, answer = ANSWER, deadline = nowSec
   const id = crypto.getRandomValues(new Uint8Array(32));
   const key = await posterKeyFor(poster.posterSeed!, ADDRESS, id);
   board.call(POSTER_PK, poster, (ctx) =>
-    c.postBounty(ctx, id, freshCoin(COLOR.hex, REWARD), pureCircuits.posterPublicKey(key), pureCircuits.answerHash(encodeAnswer(answer)), deadline, TITLE, DETAILS),
+    c.postBounty(ctx, id, freshCoin(COLOR.hex, REWARD), pureCircuits.posterPublicKey(key), pureCircuits.answerHash(encodeAnswer(answer)), deadline, TITLE, DETAILS, postTime()),
   );
   return id;
 }
@@ -178,7 +179,9 @@ describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
     );
     // One payout coin, worth exactly the reward, to the solver.
     expect(paid(res, SOLVER_PK, REWARD)).toHaveLength(1);
-    expect(row(board, id, poster)).toMatchObject({ status: Status.SOLVED, reward: null, mine: true });
+    // The listing keeps the reward after the payout empties the escrow.
+    expect(board.ledger.escrows.member(id)).toBe(false);
+    expect(row(board, id, poster)).toMatchObject({ status: Status.SOLVED, reward: REWARD, mine: true });
     expectMirrors(board, "submit", SOLVER_PK, newPrivateState(), id, ANSWER);
     expectMirrors(board, "refund", POSTER_PK, poster, id);
 
@@ -202,7 +205,7 @@ describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
     expectMirrors(board, "refund", POSTER_PK, poster, id);
     const res = board.call(POSTER_PK, poster, (ctx) => c.refund(ctx, id));
     expect(paid(res, POSTER_PK, REWARD)).toHaveLength(1);
-    expect(row(board, id, poster)).toMatchObject({ status: Status.REFUNDED, reward: null });
+    expect(row(board, id, poster)).toMatchObject({ status: Status.REFUNDED, reward: REWARD });
     expectMirrors(board, "refund", POSTER_PK, poster, id);
   });
 
@@ -254,6 +257,10 @@ describe("answer encoding", () => {
     expect(listingError(TITLE, "x".repeat(DETAILS_MAX + 1))).toBe(`Question is over ${DETAILS_MAX} characters`);
   });
 
+  it("postTime records a minute before the browser's clock, in seconds", () => {
+    expect(postTime(1_793_172_852_999)).toBe(1_793_172_792n);
+  });
+
   it("parseAmount accepts exactly the positive Uint<64> values", () => {
     expect(parseAmount("1")).toBe(1n);
     expect(parseAmount(((1n << 64n) - 1n).toString())).toBe((1n << 64n) - 1n);
@@ -279,7 +286,7 @@ describe("private-bounties circuit wrappers (types)", () => {
     expectTypeOf<Awaited<ReturnType<typeof postBounty>>>().toEqualTypeOf<
       FinalizedCallTxData<Contract, "postBounty">
     >();
-    expectTypeOf<Parameters<typeof postBounty>["length"]>().toEqualTypeOf<8>();
+    expectTypeOf<Parameters<typeof postBounty>["length"]>().toEqualTypeOf<9>();
     expectTypeOf<Awaited<ReturnType<typeof submit>>>().toEqualTypeOf<
       FinalizedCallTxData<Contract, "submit">
     >();
