@@ -139,6 +139,14 @@ export function newPrivateState(): PrivateBountiesPrivateState {
   return { ...createInitialPrivateState(randomBytes32()), posterSeed: randomBytes32() };
 }
 
+/**
+ * The deploy-time minimums this UI deploys with: a reward of at least 10, and
+ * a bounty open for at least 30 minutes. Together they make spam posts lock up
+ * capital for a while (second audit, L1).
+ */
+export const MIN_REWARD = 10n;
+export const MIN_WINDOW = 30n * 60n;
+
 /** Deploy a bounty contract whose rewards are paid in the token of `colorBytes`. */
 export async function deployPrivateBounties(
   providers: PrivateBountiesProviders,
@@ -148,7 +156,7 @@ export async function deployPrivateBounties(
     compiledContract: CompiledPrivateBountiesContract,
     privateStateId: PRIVATE_STATE_ID,
     initialPrivateState: newPrivateState(),
-    args: [colorBytes],
+    args: [colorBytes, MIN_REWARD, MIN_WINDOW],
   });
   return {
     contract: deployed,
@@ -255,11 +263,27 @@ export function listingError(title: string, details: string): string | null {
 
 /**
  * The post time to record: a minute before the browser's clock, so a block
- * clock running slightly behind can't reject it. The contract accepts anything
- * from 15 minutes before the block time up to the block time.
+ * clock running slightly behind can't reject it, rounded down to 5 minutes, so
+ * a device whose clock is off doesn't leave the same offset on every bounty it
+ * posts (second audit, L2). The contract accepts anything from 15 minutes
+ * before the block time up to the block time, which leaves about 9 minutes for
+ * the post to land.
  */
 export function postTime(nowMs: number = Date.now()): bigint {
-  return BigInt(Math.floor(nowMs / 1000) - 60);
+  const t = Math.floor(nowMs / 1000) - 60;
+  return BigInt(t - (((t % 300) + 300) % 300));
+}
+
+/**
+ * Why `postBounty` would reject this reward and deadline, or null. It mirrors
+ * the circuit's window and reward checks, in the circuit's order, against the
+ * deployment's minimums in public state.
+ */
+export function postError(state: Ledger, reward: bigint, deadline: bigint, postedAt: bigint): string | null {
+  if (deadline < postedAt + state.minWindow) return "Deadline is too soon";
+  if (reward <= 0n) return "Reward has no value";
+  if (reward < state.minReward) return "Reward is below the minimum";
+  return null;
 }
 
 /** What a poster fills in. `deadline` is in seconds since the Unix epoch (block time). */
@@ -271,6 +295,8 @@ export interface NewBounty {
   answer: string;
   reward: bigint;
   deadline: bigint;
+  /** Defaults to `postTime()`. */
+  postedAt?: bigint;
   colorHex: string;
 }
 
@@ -290,18 +316,21 @@ export async function postNewBounty(
   const ps = await readPrivateState(providers, address);
   if (!ps?.posterSeed) throw new Error("This browser has no poster seed for this contract: rejoin it first.");
   const answer = encodeAnswer(input.answer);
-  const id = randomBytes32();
+  // The ID comes from a fresh salt and the poster's secret, so a pending post
+  // can't be front-run with its own ID (second audit, L3).
+  const salt = randomBytes32();
+  const id = pureCircuits.bountyIdFor(salt, ps.sk);
   const key = await posterKeyFor(ps.posterSeed, address, id);
   const tx = await postBounty(
     contract,
-    id,
+    salt,
     freshCoin(input.colorHex, input.reward),
     pureCircuits.posterPublicKey(key),
     pureCircuits.answerHash(answer),
     input.deadline,
     input.title.trim(),
     input.details.trim(),
-    postTime(),
+    input.postedAt ?? postTime(),
   );
   return { id, tx };
 }
@@ -338,6 +367,13 @@ export async function readAnswer(
   posterSeed: Uint8Array,
 ): Promise<string> {
   const key = await posterKeyFor(posterSeed, address, id);
+  // A key that isn't the bounty's would decrypt to garbage without any error,
+  // so check it against the public key first (second audit, S2).
+  const mine = pureCircuits.posterPublicKey(key);
+  const posted = state.bounties.lookup(id).posterPk;
+  if (mine.x !== posted.x || mine.y !== posted.y) {
+    throw new Error("This browser's key doesn't match the bounty's: it was posted from another seed");
+  }
   return decodeAnswer(pureCircuits.decrypt(state.deliveries.lookup(id), key, id));
 }
 

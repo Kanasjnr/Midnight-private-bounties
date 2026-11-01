@@ -47,6 +47,8 @@ import {
   joinPrivateBounties,
   ledger$,
   listingError,
+  postError,
+  postTime,
   mintTestTokens,
   parseAmount,
   postNewBounty,
@@ -297,7 +299,7 @@ export function PrivateBountiesPanel() {
                 busy={busy}
                 logged={logged}
               />
-              <PostCard deployment={deployment} colorHex={colorHex} now={now} logged={logged} />
+              <PostCard deployment={deployment} state={state} colorHex={colorHex} now={now} logged={logged} />
               <BoardCard
                 state={state}
                 ps={ps}
@@ -470,8 +472,8 @@ function TokenCard(props: {
   );
 }
 
-function PostCard(props: { deployment: BountyDeployment; colorHex: string; now: bigint; logged: Logged }) {
-  const { deployment, colorHex, now, logged } = props;
+function PostCard(props: { deployment: BountyDeployment; state: Ledger | null; colorHex: string; now: bigint; logged: Logged }) {
+  const { deployment, state, colorHex, now, logged } = props;
   const { providers, contract, address, busy } = deployment;
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
@@ -481,8 +483,13 @@ function PostCard(props: { deployment: BountyDeployment; colorHex: string; now: 
   const parsedReward = parseAmount(reward);
   const parsedMinutes = parseAmount(minutes);
   const textError = title === "" && details === "" ? null : listingError(title, details);
+  const postedAt = postTime(Number(now) * 1000);
+  const deadline = parsedMinutes === null ? null : now + parsedMinutes * 60n;
+  const termsError =
+    state && parsedReward !== null && deadline !== null ? postError(state, parsedReward, deadline, postedAt) : null;
   const ready =
-    listingError(title, details) === null && answer.trim().length > 0 && parsedReward !== null && parsedMinutes !== null;
+    listingError(title, details) === null && answer.trim().length > 0 && deadline !== null && parsedReward !== null &&
+    termsError === null;
 
   return (
     <Card>
@@ -505,6 +512,12 @@ function PostCard(props: { deployment: BountyDeployment; colorHex: string; now: 
           aria-label="Question"
         />
         {textError && <p className="text-muted-foreground">{textError}</p>}
+        {termsError && (
+          <p className="text-muted-foreground">
+            {termsError}
+            {state && ` (this deployment needs a reward of at least ${state.minReward} and ${state.minWindow / 60n} minutes)`}
+          </p>
+        )}
         <Input placeholder="The answer (up to 124 bytes)" value={answer} onChange={(e) => setAnswer(e.target.value)} aria-label="Answer" />
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2">
@@ -519,13 +532,14 @@ function PostCard(props: { deployment: BountyDeployment; colorHex: string; now: 
             disabled={busy !== null || !contract || !ready}
             onClick={() =>
               void logged("post bounty", async () => {
-                if (!contract || !providers || !address || parsedReward === null || parsedMinutes === null) return;
+                if (!contract || !providers || !address || parsedReward === null || deadline === null) return;
                 const { id, tx } = await postNewBounty(contract, providers, address, {
                   title,
                   details,
                   answer,
                   reward: parsedReward,
-                  deadline: now + parsedMinutes * 60n,
+                  deadline,
+                  postedAt,
                   colorHex,
                 });
                 setTitle("");
