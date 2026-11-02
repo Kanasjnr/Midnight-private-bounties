@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import { Status, type BountyView } from "@/midnight/private-bounties-api";
 import { statusOf } from "~/lib/board";
-import { amount, ago, deadlineText } from "~/lib/format";
+import { amount, ago } from "~/lib/format";
 import { cleanTitle } from "~/lib/sanitize";
 import { href } from "~/router";
+import { Countdown } from "~/components/countdown";
 import { Chip, cx, StatusText } from "~/components/ui";
 
 const ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:grid-cols-[minmax(0,1fr)_110px_150px_130px]";
@@ -58,7 +59,7 @@ export function BountyTable({
             <span className="hidden text-right font-mono text-[15px] font-medium whitespace-nowrap sm:block">
               {b.reward !== null ? amount(b.reward) : "–"} <span className="text-xs text-faint">TEST</span>
             </span>
-            <span className={cx("hidden text-sm sm:block", soon ? "text-warn" : "text-fg-2")}>{timeText(b, now)}</span>
+            <span className={cx("hidden text-sm sm:block", soon ? "text-warn" : "text-fg-2")}>{timeText(b)}</span>
             <span className="text-sm">
               <StatusText {...s} />
             </span>
@@ -70,7 +71,7 @@ export function BountyTable({
   );
 }
 
-function timeText(b: BountyView, now: bigint): string {
-  if (b.status === Status.OPEN) return deadlineText(b.deadline, now);
+function timeText(b: BountyView): ReactNode {
+  if (b.status === Status.OPEN) return <Countdown deadline={b.deadline} />;
   return b.status === Status.SOLVED ? "Solved" : "Refunded";
 }

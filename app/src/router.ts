@@ -1,6 +1,7 @@
 // Hash routes, so the page never reloads: a proof or a wallet approval in
 // flight keeps going while you move around.
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { externalStore, useStore } from "~/lib/store";
 
 export type Route =
   | { name: "board" }
@@ -39,15 +40,17 @@ export function go(route: Route): void {
   window.location.hash = href(route);
 }
 
+const hash = externalStore(window.location.hash, (set) => {
+  const onChange = () => {
+    set(window.location.hash);
+    window.scrollTo({ top: 0 });
+  };
+  set(window.location.hash);
+  window.addEventListener("hashchange", onChange);
+  return () => window.removeEventListener("hashchange", onChange);
+});
+
 export function useRoute(): Route {
-  const [route, setRoute] = useState(() => parseRoute(window.location.hash));
-  useEffect(() => {
-    const onChange = () => {
-      setRoute(parseRoute(window.location.hash));
-      window.scrollTo({ top: 0 });
-    };
-    window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
-  }, []);
-  return route;
+  const h = useStore(hash);
+  return useMemo(() => parseRoute(h), [h]);
 }

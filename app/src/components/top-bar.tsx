@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronDown, Lock } from "lucide-react";
 import { useWallet } from "@/hooks/use-wallet";
 import { NIGHT_COLOR } from "@/lib/tokens";
@@ -108,24 +108,10 @@ function Balances() {
 function Account() {
   const { shieldedAddress, wallets, selectedWalletKey, disconnect } = useWallet();
   const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
   const name = wallets.find((w) => w.key === selectedWalletKey)?.name ?? "Wallet";
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !box.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
-
   return (
-    <div ref={box} className="relative">
+    <div className="relative" onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
       <button
         type="button"
         aria-expanded={open}
@@ -139,6 +125,10 @@ function Account() {
         {name}
         <ChevronDown aria-hidden="true" className="size-3.5" />
       </button>
+      {open && (
+        // Clicking anywhere outside the menu lands on this backdrop and closes it.
+        <div aria-hidden="true" className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+      )}
       {open && (
         <div role="menu" className="absolute right-0 z-20 mt-2 flex w-72 flex-col gap-1 rounded-lg border border-line bg-surface p-2 shadow-xl shadow-black/40">
           <div className="px-2 py-1.5 text-xs text-faint">

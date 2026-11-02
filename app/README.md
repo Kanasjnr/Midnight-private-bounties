@@ -47,6 +47,11 @@ and pass on retry).
   only the marks, never keys or funds.
 - **Local proving by default** (spike Q10), as in `../ui`. Wallet proving is
   one click away in setup, with the warning shown wherever it applies.
+- **No effects.** Anything from outside React (the clock, the URL, browser
+  storage, the ledger stream, balance polls, the proof server check) is a small
+  store read with `useSyncExternalStore` (`src/lib/store.ts`), so only the
+  components that read a value rerender when it changes. Countdowns tick in
+  their own component; the rest of the page uses a 10-second clock.
 - **Fonts are self-hosted** (Fontsource), so the page makes no request to a
   font CDN.
 
@@ -74,7 +79,7 @@ yarn workspace @midnight-ntwrk/example-private-bounties-app dev         # http:/
 | `dev` | copies ZK assets into `public/`, then runs Vite on port 5174 |
 | `build` | copies ZK assets, typechecks, builds to `dist/` |
 | `typecheck` | `tsc -b` |
-| `test:unit` | vitest: the board logic, formatting, text cleaning, routes, and the transaction tracker |
+| `test:unit` | vitest: the board logic, formatting, text cleaning, routes, the stores, and the transaction tracker |
 
 ## Verification
 

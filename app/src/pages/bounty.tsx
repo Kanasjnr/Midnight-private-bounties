@@ -15,11 +15,12 @@ import {
   type BountyView,
 } from "@/midnight/private-bounties-api";
 import { statusOf } from "~/lib/board";
-import { ago, amount, dateTime, deadlineText, short, span } from "~/lib/format";
+import { ago, amount, dateTime, short, span } from "~/lib/format";
 import { cleanDetails, cleanTitle, hadHiddenCharacters } from "~/lib/sanitize";
 import { href, type Route } from "~/router";
 import { useSession } from "~/session";
 import { Loading } from "~/pages/board";
+import { Countdown } from "~/components/countdown";
 import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, LinkButton, Panel, StatusText, Textarea, Visibility } from "~/components/ui";
 
 export function BountyPage({ route }: { route: Extract<Route, { name: "bounty" }> }) {
@@ -106,7 +107,7 @@ function Details({ b, extra }: { b: BountyView; extra?: [ReactNode, ReactNode][]
           [
             b.status === Status.OPEN ? (now < b.deadline ? "Ends" : "Ended") : "Deadline",
             <span className="flex flex-col items-end">
-              <span>{b.status === Status.OPEN ? deadlineText(b.deadline, now).replace(/^Ends /, "").replace(/^Ended /, "") : dateTime(b.deadline)}</span>
+              <span>{b.status === Status.OPEN ? <Countdown deadline={b.deadline} bare /> : dateTime(b.deadline)}</span>
               {b.status === Status.OPEN && <span className="text-[13px] text-faint">{dateTime(b.deadline)}</span>}
             </span>,
           ],

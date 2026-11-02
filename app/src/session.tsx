@@ -1,20 +1,10 @@
-// The board this browser has joined, and everything the pages need about it:
-// the contract handle, the live public ledger, this account's private state,
-// the reward token, balances, and a way to run a transaction with the tray.
-//
-// The wallet, providers and private-state store are the UI template's
-// (../ui/src/providers), and every contract call is the api file's
-// (../ui/src/midnight/private-bounties-api.ts), which the circuits test checks
-// against the compiled contract. This file only wires them together.
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { combineLatest, defer, map } from "rxjs";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
-import { useContractState } from "@/hooks/use-contract-state";
 import { useDeployment, type Deployment } from "@/hooks/use-deployment";
-import { useDustBalance } from "@/hooks/use-dust-balance";
-import { useWalletBalances, type WalletBalances } from "@/hooks/use-wallet-balances";
-import { storage } from "@/lib/storage";
+import { useWallet } from "@/hooks/use-wallet";
+import type { WalletBalances } from "@/hooks/use-wallet-balances";
 import type { Ledger, PrivateBountiesPrivateState } from "@/midnight/contract";
-import { DEFAULT_PROOF_SERVER_URL } from "@/midnight/providers";
 import { useMidnightProviders } from "@/providers/midnight-providers";
 import {
   bountyViews,
@@ -31,12 +21,11 @@ import {
   type TokenCircuits,
   type TokenProviders,
 } from "@/midnight/private-bounties-api";
-import { useLocalSet } from "~/hooks/use-local-set";
+import { useLocalSet, useLocalValue } from "~/hooks/use-local-value";
 import { useNow } from "~/hooks/use-now";
+import { constantStore, observableStore, pollStore, promiseStore, useStore, type Poll, type Streamed } from "~/lib/store";
 import { instrument, useTx } from "~/tx";
 
-/** Where the template's providers context keeps the proving choice. */
-const PROVING_KEY = "private-bounties-ui:proving";
 const TOKEN_KEY_PREFIX = "private-bounties-app:token-address:";
 
 interface DeployInput {
@@ -61,6 +50,7 @@ export interface Session {
   dust: { balance: bigint; cap: bigint } | null;
   /** The reward token this wallet holds, or null before the first poll. */
   rewardBalance: bigint | null;
+  /** Seconds, refreshed every 10 s. Live countdowns read their own faster clock (<Countdown>). */
   now: bigint;
   /** Per-browser marks for this board. */
   hidden: ReturnType<typeof useLocalSet>;
@@ -78,10 +68,21 @@ export interface TokenAddress {
   forget: () => void;
 }
 
+interface Board {
+  state: Ledger;
+  ps: PrivateBountiesPrivateState | null;
+}
+
+const NOTHING = constantStore<Streamed<Board>>({ value: null, error: null });
+const NO_PROVIDERS = constantStore<TokenProviders | null>(null);
+const NO_POLL: Poll<never> = { store: constantStore(null), refresh: () => {} };
+
+/** Bigint-safe JSON, to compare poll replies. */
+const json = (v: unknown) => JSON.stringify(v, (_k, x: unknown) => (typeof x === "bigint" ? x.toString() : x));
+
 const SessionContext = createContext<Session | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  useLocalProvingByDefault();
   const tx = useTx();
   const deployment = useDeployment<PrivateBountiesContract, DeployInput>({
     // Contract handles keep the providers they were made with, so instrument
@@ -92,40 +93,54 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       ),
     join: (providers, address) => joinPrivateBounties(instrument(providers, tx.report), address),
   });
-  const { providers, contract, address, busy, networkId } = deployment;
+  const { providers, contract, address, networkId } = deployment;
   const token = useTokenAddress(networkId);
-  const tokenProviders = useTokenProviders(tx.report);
   const now = useNow();
 
-  const ledgerObservable = useMemo(
-    () => (providers && address ? ledger$(providers, address) : null),
-    [providers, address],
+  // The ledger as the indexer pushes it, with this account's private state.
+  // The private state is read once per join: its identity secret and poster
+  // seed are made when the account joins and never change afterwards.
+  const boardStore = useMemo(
+    () =>
+      providers && address && contract
+        ? observableStore(
+            combineLatest([ledger$(providers, address), defer(() => readPrivateState(providers, address).catch(() => null))]).pipe(
+              map(([state, ps]) => ({ state, ps })),
+            ),
+          )
+        : NOTHING,
+    [providers, address, contract],
   );
-  const { state, error: stateError } = useContractState(ledgerObservable);
+  const board = useStore(boardStore);
+  const state = board.value?.state ?? null;
+  const ps = board.value?.ps ?? null;
 
-  // Re-read on every ledger update and after each call: midnight-js stores a
-  // call's resulting private state once its transaction is final.
-  const [ps, setPs] = useState<PrivateBountiesPrivateState | null>(null);
-  useEffect(() => {
-    if (!providers || !address || !contract) {
-      setPs(null);
-      return;
-    }
-    let cancelled = false;
-    readPrivateState(providers, address)
-      .then((p) => !cancelled && setPs(p))
-      .catch(() => !cancelled && setPs(null));
-    return () => {
-      cancelled = true;
+  const { providersFor } = useMidnightProviders();
+  const tokenStore = useMemo(
+    () =>
+      providersFor ? promiseStore(() => providersFor<TokenCircuits>(TOKEN_ZK_ASSETS_PATH).then((p) => instrument(p, tx.report))) : NO_PROVIDERS,
+    [providersFor, tx.report],
+  );
+  const tokenProviders = useStore(tokenStore);
+
+  const { connectedApi, status } = useWallet();
+  const polls = useMemo(() => {
+    if (status !== "connected" || !connectedApi) return { balances: NO_POLL as Poll<WalletBalances>, dust: NO_POLL as Poll<{ balance: bigint; cap: bigint }> };
+    return {
+      balances: pollStore<WalletBalances>(
+        () => Promise.all([connectedApi.getUnshieldedBalances(), connectedApi.getShieldedBalances()]).then(([unshielded, shielded]) => ({ unshielded, shielded })),
+        10_000,
+        json,
+      ),
+      dust: pollStore(() => connectedApi.getDustBalance(), 10_000, json),
     };
-  }, [providers, address, contract, state, busy]);
+  }, [connectedApi, status]);
+  const balances = useStore(polls.balances.store);
+  const dust = useStore(polls.dust.store);
 
   const views = useMemo(() => (state && address ? bountyViews(state, address, ps) : []), [state, address, ps]);
   const colorHex = state ? toHex(state.rewardColor) : null;
   const canMint = token.address !== null && colorHex !== null && tokenColor(token.address).hex === colorHex;
-
-  const balances = useWalletBalances(busy);
-  const dust = useDustBalance();
   const rewardBalance = balances && colorHex ? (balances.shielded[colorHex] ?? 0n) : null;
 
   const scope = `${networkId ?? "unknown"}:${address ?? "none"}`;
@@ -139,6 +154,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const ok = await deployment.run(label, async () => {
       box.value = await tx.track(label, subject, fn, { href: opts?.href, retry });
     });
+    // A call moves tokens, so read the balances again now.
+    polls.balances.refresh();
+    polls.dust.refresh();
     return ok && "value" in box ? (box.value as Awaited<ReturnType<typeof fn>>) : null;
   };
 
@@ -157,7 +175,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const value: Session = {
     deployment,
     state,
-    stateError,
+    stateError: board.error,
     ps,
     views,
     colorHex,
@@ -184,50 +202,8 @@ export function useSession(): Session {
   return ctx;
 }
 
-/**
- * Spike Q10: every circuit has secret inputs, so prove on a local proof
- * server unless the user has chosen otherwise. The template defaults to wallet
- * proving, so on a first visit (no remembered choice) switch to local once.
- */
-function useLocalProvingByDefault() {
-  const { setProving } = useMidnightProviders();
-  useEffect(() => {
-    if (storage.get(PROVING_KEY) === null) setProving({ mode: "local", proofServerUrl: DEFAULT_PROOF_SERVER_URL });
-  }, [setProving]);
-}
-
-/** The test token's providers, rebuilt with the bounty contract's, reporting their steps. */
-function useTokenProviders(report: Parameters<typeof instrument>[1]): TokenProviders | null {
-  const { providersFor } = useMidnightProviders();
-  const [tokenProviders, setTokenProviders] = useState<TokenProviders | null>(null);
-  useEffect(() => {
-    setTokenProviders(null);
-    if (!providersFor) return;
-    let cancelled = false;
-    providersFor<TokenCircuits>(TOKEN_ZK_ASSETS_PATH)
-      .then((p) => !cancelled && setTokenProviders(instrument(p, report)))
-      .catch(() => !cancelled && setTokenProviders(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [providersFor, report]);
-  return tokenProviders;
-}
-
 /** The test token's address on this network, kept in localStorage. */
 function useTokenAddress(networkId: string | null): TokenAddress {
-  const key = `${TOKEN_KEY_PREFIX}${networkId ?? "unknown"}`;
-  const [address, setAddress] = useState<string | null>(() => storage.get(key));
-  useEffect(() => setAddress(storage.get(key)), [key]);
-  return {
-    address,
-    remember: (a: string) => {
-      storage.set(key, a);
-      setAddress(a);
-    },
-    forget: () => {
-      storage.remove(key);
-      setAddress(null);
-    },
-  };
+  const [address, write] = useLocalValue(`${TOKEN_KEY_PREFIX}${networkId ?? "unknown"}`);
+  return { address, remember: write, forget: () => write(null) };
 }
