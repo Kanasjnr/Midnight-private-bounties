@@ -1,0 +1,74 @@
+@import "tailwindcss";
+@import "@fontsource-variable/urbanist";
+@import "@fontsource-variable/geist-mono";
+
+/*
+ * Midnight's palette, from the brand values in midnight-docs: the deep blue
+ * for primary actions, violet for what stays private, and near-black
+ * surfaces. Colors are tokens so a light theme can redefine them later.
+ * Fonts are self-hosted (Fontsource), so the page makes no request to a font
+ * CDN.
+ */
+@theme {
+  --font-sans: "Urbanist Variable", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  --color-page: #0a0a0a;
+  --color-surface: #111111;
+  --color-raised: #151515;
+  --color-chip: #1c1c1c;
+  --color-line: #222222;
+  --color-line-soft: #1b1b1b;
+  --color-line-strong: #2e2e2e;
+  --color-line-hover: #3a3a3a;
+
+  --color-fg: #e1e1e6;
+  --color-fg-2: #c5c5cc;
+  --color-muted: #9b9ba4;
+  --color-faint: #808089;
+
+  --color-brand: #0000fe;
+  --color-brand-hover: #0000dd;
+  --color-focus: #005aff;
+  --color-link: #0677f9;
+  --color-link-hover: #3d95ff;
+  --color-private: #a08cff;
+  --color-navy: #0a0c16;
+  --color-navy-line: #1a1d33;
+
+  --color-ok: #3fb27f;
+  --color-ok-line: #24543f;
+  --color-ok-bg: #0d1a14;
+  --color-warn: #f5a623;
+  --color-warn-line: #3a2e14;
+  --color-warn-bg: #15110a;
+  --color-bad: #f26d6d;
+  --color-bad-line: #4a1f1f;
+  --color-bad-bg: #1a0d0d;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    margin: 0;
+    background: var(--color-page);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  ::placeholder {
+    color: var(--color-faint);
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}

@@ -1,0 +1,80 @@
+import { WalletProvider } from "@/providers/wallet-context";
+import { MidnightProvidersProvider } from "@/providers/midnight-providers";
+import { useRoute, type Route } from "~/router";
+import { SessionProvider } from "~/session";
+import { TxProvider } from "~/tx";
+import { TopBar } from "~/components/top-bar";
+import { Tray } from "~/components/tray";
+import { BoardPage } from "~/pages/board";
+import { BountyPage } from "~/pages/bounty";
+import { MinePage } from "~/pages/mine";
+import { PostPage } from "~/pages/post";
+import { SetupPage } from "~/pages/setup";
+
+export function App() {
+  return (
+    <WalletProvider>
+      <MidnightProvidersProvider>
+        <TxProvider>
+          <SessionProvider>
+            <Shell />
+          </SessionProvider>
+        </TxProvider>
+      </MidnightProvidersProvider>
+    </WalletProvider>
+  );
+}
+
+function Shell() {
+  const route = useRoute();
+  return (
+    <div className="flex min-h-screen flex-col">
+      <TopBar route={route} />
+      <main className="mx-auto box-border w-full max-w-[1240px] flex-1 px-4 pt-10 pb-16 sm:px-8 sm:pt-12">
+        <Page route={route} />
+      </main>
+      <Footer />
+      <Tray />
+    </div>
+  );
+}
+
+function Page({ route }: { route: Route }) {
+  switch (route.name) {
+    case "setup":
+      return <SetupPage />;
+    case "post":
+      return <PostPage />;
+    case "mine":
+      return <MinePage />;
+    case "bounty":
+      return <BountyPage route={route} />;
+    case "board":
+      return <BoardPage />;
+  }
+}
+
+function Footer() {
+  const link = "text-faint no-underline hover:text-fg";
+  return (
+    <footer className="border-t border-line">
+      <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-4 px-4 pt-6 pb-8 text-sm text-faint sm:px-8">
+        <span>Private Bounties · open source, built on Midnight</span>
+        <nav aria-label="Footer" className="flex flex-wrap gap-5">
+          <a className={link} href="https://github.com/Kanasjnr/Midnight-private-bounties" target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+          <a className={link} href="https://github.com/Kanasjnr/Midnight-private-bounties/blob/main/ARCHITECTURE.md" target="_blank" rel="noreferrer">
+            Design notes
+          </a>
+          <a className={link} href="https://github.com/Kanasjnr/Midnight-private-bounties/issues" target="_blank" rel="noreferrer">
+            Report a problem
+          </a>
+          <a className={link} href="https://docs.midnight.network" target="_blank" rel="noreferrer">
+            Midnight docs
+          </a>
+        </nav>
+      </div>
+    </footer>
+  );
+}
