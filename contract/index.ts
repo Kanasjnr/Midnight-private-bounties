@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Contract as BountyPreimageContractClass } from './managed/bounty_preimage/contract/index.js';
 import { Contract as BountyFactorContractClass } from './managed/bounty_factor/contract/index.js';
 import { Contract as BountySignedRecordContractClass } from './managed/bounty_signed_record/contract/index.js';
+import { Contract as BountyReviewedWorkContractClass } from './managed/bounty_reviewed_work/contract/index.js';
 import { Contract as TestTokenContractClass } from './managed/test_token/contract/index.js';
 import { bountyWitnesses } from './witnesses.js';
 
@@ -39,6 +40,17 @@ export {
 } from './managed/bounty_signed_record/contract/index.js';
 
 export {
+  Contract as BountyReviewedWorkContract,
+  ledger as bountyReviewedWorkLedger,
+  pureCircuits as bountyReviewedWorkPureCircuits,
+  Status as WorkStatus,
+  type Terms,
+  type Work,
+  type Ledger as BountyReviewedWorkLedger,
+  type ImpureCircuits as BountyReviewedWorkImpureCircuits,
+} from './managed/bounty_reviewed_work/contract/index.js';
+
+export {
   Contract as TestTokenContract,
   type ImpureCircuits as TestTokenImpureCircuits,
 } from './managed/test_token/contract/index.js';
@@ -48,6 +60,7 @@ const currentDir = path.dirname(fileURLToPath(import.meta.url));
 export const bountyPreimageZkConfigPath = path.resolve(currentDir, 'managed', 'bounty_preimage');
 export const bountyFactorZkConfigPath = path.resolve(currentDir, 'managed', 'bounty_factor');
 export const bountySignedRecordZkConfigPath = path.resolve(currentDir, 'managed', 'bounty_signed_record');
+export const bountyReviewedWorkZkConfigPath = path.resolve(currentDir, 'managed', 'bounty_reviewed_work');
 export const testTokenZkConfigPath = path.resolve(currentDir, 'managed', 'test_token');
 
 export const CompiledBountyPreimageContract = CompiledContract.make(
@@ -73,6 +86,16 @@ export const CompiledBountySignedRecordContract = CompiledContract.make(
 ).pipe(
   CompiledContract.withWitnesses(bountyWitnesses),
   CompiledContract.withCompiledFileAssets(bountySignedRecordZkConfigPath),
+);
+
+// Reviewed work reads the same witnesses: the identity secret, the submission
+// (a link) and the key-exchange scalar.
+export const CompiledBountyReviewedWorkContract = CompiledContract.make(
+  'BountyReviewedWorkContract',
+  BountyReviewedWorkContractClass,
+).pipe(
+  CompiledContract.withWitnesses(bountyWitnesses),
+  CompiledContract.withCompiledFileAssets(bountyReviewedWorkZkConfigPath),
 );
 
 // Test-only: the reward token for local networks and testnets.
