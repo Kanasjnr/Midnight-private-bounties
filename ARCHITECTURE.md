@@ -272,9 +272,9 @@ the two-step version is no longer needed.
 | Escrow `submit` (merge + payout) | 16 | about 100 s to 134 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | `postBounty`, `refund` | 15 | about 40 s to 67 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | **Full `submit`**: checker + key exchange + encryption + escrow | **16** | **about 11 s to prove (idle runner)**; 43 s (loaded laptop) | [Q11](spike/q11-full-submit/RESULTS.md) |
-| Reviewed work `collect` (merge and payout) | 16 | Not measured; the same size as the preimage `submit`. Prover key 19.5 MB | [Q13](spike/q13-reviewed-work/RESULTS.md); the template, compiled with keys on 0.31.1, 2026-11-02 |
-| Reviewed work `postWork`, `refund` | 15 | Not measured. Prover keys 11.0 and 10.0 MB: the template's listing, minimums and derived ID cost the same as in the other templates | Same |
-| Reviewed work `submit`, `claim`, `assign`, `release`, `approve`, `reject`, `overturn` | 13 | Not measured; the pseudonym's SHA-256 sets the size. Prover keys 2.8 to 3.1 MB | Same |
+| Reviewed work `collect` (merge and payout) | 16 | 59 to 67 s per transaction, end to end, on a devnet runner; the same size as the preimage `submit`. Prover key 19.5 MB | [Q13](spike/q13-reviewed-work/RESULTS.md); the template, compiled with keys on 0.31.1, 2026-11-02 |
+| Reviewed work `postWork`, `refund` | 15 | `postWork` 36 to 43 s per transaction, end to end. Prover keys 11.0 and 10.0 MB: the template's listing, minimums and derived ID cost the same as in the other templates | Same |
+| Reviewed work `submit`, `claim`, `assign`, `release`, `approve`, `reject`, `overturn` | 13 | 24 to 30 s per transaction, end to end; the pseudonym's SHA-256 sets the size. Prover keys 2.8 to 3.1 MB | Same, and the devnet test, 2026-11-02 |
 | Reviewed work `reopen` | 9 | Not measured. Prover key 0.15 MB | Same |
 | Title and question on `postBounty` | 15, unchanged | The prover key grew by 85 bytes (11,017,896 to 11,017,981). The text's length doesn't change the circuit; it only adds to the transaction | `bounty_preimage`, compiled with keys on 0.31.1, 2026-10-31 |
 | Reward and post time in the listing | 15, unchanged | The prover key grew by another 291 bytes, to 11,018,272; `refund` and `submit` are unchanged | `bounty_preimage`, compiled with keys on 0.31.1, 2026-11-01 |
