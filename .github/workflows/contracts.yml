@@ -3,7 +3,8 @@ name: Contracts
 # On every PR into next-release and main:
 #   Contracts             compile with proving keys, typecheck, simulator tests,
 #                         then the browser UI: template drift check, typecheck,
-#                         unit tests and a production build
+#                         unit tests and a production build, then the
+#                         same for the app
 #   Contracts on devnet   the devnet tests, with real proofs and transactions
 # The package runs inside a checkout of midnight-examples, pinned below, for
 # its simulator package, wallets and devnet tooling.
@@ -66,6 +67,13 @@ jobs:
       - name: Enable Corepack (Yarn 4)
         run: corepack enable
 
+      # app/ is this project's own frontend, not a template UI, so the
+      # examples repo's workspace globs don't cover it. Add one for it.
+      - name: Add app/ as a workspace
+        working-directory: examples-repo
+        run: |
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.workspaces.push("examples/*/app");fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+
       # This package is a new workspace, so the lockfile changes. Yarn makes
       # installs immutable in CI by default, so turn that off here.
       - name: Install dependencies
@@ -108,6 +116,18 @@ jobs:
       - name: Build the UI
         working-directory: examples-repo
         run: yarn workspace @midnight-ntwrk/example-private-bounties-ui build
+
+      - name: Typecheck the app
+        working-directory: examples-repo
+        run: yarn workspace @midnight-ntwrk/example-private-bounties-app typecheck
+
+      - name: Run the app unit tests
+        working-directory: examples-repo
+        run: yarn workspace @midnight-ntwrk/example-private-bounties-app test:unit
+
+      - name: Build the app
+        working-directory: examples-repo
+        run: yarn workspace @midnight-ntwrk/example-private-bounties-app build
 
   devnet:
     name: Contracts on devnet
