@@ -5,7 +5,9 @@ name: Contracts
 #                         then the browser UI: template drift check, typecheck,
 #                         unit tests and a production build, then the
 #                         same for the app
-#   Contracts on devnet   the devnet tests, with real proofs and transactions
+#   Contracts on devnet   the devnet tests, with real proofs and transactions:
+#                         one job for the verified-answer templates, one for
+#                         reviewed work
 # The package runs inside a checkout of midnight-examples, pinned below, for
 # its simulator package, wallets and devnet tooling.
 
@@ -130,9 +132,21 @@ jobs:
         run: yarn workspace @midnight-ntwrk/example-private-bounties-app build
 
   devnet:
-    name: Contracts on devnet
+    name: Contracts on devnet (${{ matrix.suite }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Each suite gets its own runner and devnet: together they would not fit
+    # in one job's time limit.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: verified answers
+            key: verified
+            tests: src/test/bounty_preimage.test.ts src/test/bounty_factor.test.ts src/test/bounty_signed_record.test.ts
+          - suite: reviewed work
+            key: reviewed
+            tests: src/test/bounty_reviewed_work.test.ts
     permissions:
       contents: read
     steps:
@@ -195,7 +209,7 @@ jobs:
         working-directory: ${{ env.PACKAGE }}
         run: |
           set -o pipefail
-          yarn test:local 2>&1 | tee devnet-run.log
+          yarn test:local ${{ matrix.tests }} 2>&1 | tee devnet-run.log
 
       - name: Collect service logs on failure
         if: failure()
@@ -211,7 +225,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  #v7.0.2
         with:
-          name: contracts-devnet-logs
+          name: contracts-devnet-logs-${{ matrix.key }}
           path: |
             ${{ env.PACKAGE }}/devnet-run.log
             ${{ env.PACKAGE }}/logs/

@@ -73,7 +73,7 @@ Diffie-Hellman key exchange on the Jubjub curve, and the proof shows it was done
 
 ## 5. Modes
 
-| | **Open bounty** (v1, flagship) | **Reviewed work** (planned, Q13) | **Private offer** (v2) |
+| | **Open bounty** (v1, flagship) | **Reviewed work** (contract built, Q13) | **Private offer** (v2) |
 |---|---|---|---|
 | Who | One poster, any solver | One poster, one contributor at a time, an optional arbiter | One buyer, one seller who already has the data |
 | Who decides it's done | The checker, inside the proof | The poster, or the arbiter on appeal | The checker, inside the proof |
@@ -83,7 +83,7 @@ Diffie-Hellman key exchange on the Jubjub curve, and the proof shows it was done
 | Transactions for the solver or contributor | One: `submit` brings the solver's own coin in the same transaction (Q3, verified) | Three: claim (or apply), submit, collect | List + claim |
 | Example use | "Factor N", "find the preimage", "a signed record with income ≥ X" | "Build a tool", "write a guide", "host a workshop" | Sell a verified fact to one lender |
 
-v1 builds the open bounty. Reviewed work comes next: spike Q13 ran its contract in memory. The private offer
+v1 builds the open bounty. Reviewed work comes next: spike Q13 ran its contract in memory, and the template `bounty_reviewed_work` is built and passes its simulator and devnet tests. The private offer
 reuses the same modules and adds a commitment to k and a hidden price (section 14).
 
 ### Reviewed work (spike Q13)
@@ -122,14 +122,14 @@ Submitted or approved work is never refundable.
 | Contributor profile | Off chain: a name and linked accounts. Each application chooses who sees it: the poster only (default, encrypted in the application), everyone once assigned, or nobody. GitHub is verified by a signed statement in a public gist, checked in the browser; other accounts show as unverified |
 | Poster identity | Anonymous by default, or a verified organization name, so contributors know who is paying. How the name is verified is open 🔬 |
 | Applications | Encrypted to the poster. Whether they live on chain (fees per application) or off chain is open 🔬 |
-| Windows | Compact has no clock value, only comparisons with block time. Whoever sets a window end passes it as an argument, and the circuit checks it lies between `now + window − slack` and `now + window`: `blockTimeGte(end − window)` and `blockTimeLt(end − window + slack)`. The check has to be two-sided, because the poster sets deliver-by and appeal-by and the contributor sets review-by, and each could cut the other's window short. `slack` is fixed per deployment and must cover the time a call takes to land: up to 2.5 minutes in Q6, so 10 to 15 minutes 🔬 (devnet) |
+| Windows | Compact has no clock value, only comparisons with block time. Whoever sets a window end passes it as an argument, and the circuit checks it lies between `now + window − slack` and `now + window`: `blockTimeGte(end − window)` and `blockTimeLt(end − window + slack)`. The check has to be two-sided, because the poster sets deliver-by and appeal-by and the contributor sets review-by, and each could cut the other's window short. `slack` is fixed per deployment and must cover the time a call takes to land: up to 2.5 minutes in Q6. **On a devnet (2026-11-02)** the template's tests ran with 15 minutes and window ends a minute short of `now + window`, and every window check held against real block timestamps; calls took 24 to 67 s to land |
 | Claims | `claim` (first to claim) and `assign` (the poster picks an applicant's pseudonym) set deliver-by. Claims close once a full delivery window no longer fits before the final deadline, which the post form should show. `reopen` is its own circuit: anyone can call it on an assignment or a rejection whose window has passed |
 | Review clock | `submit` sets review-by. The poster can approve or reject until then. After it, `collect` works without an approval |
 | Submission | A link, encrypted to the poster with the existing key exchange and keystream. The four field elements hold about 124 bytes, enough for a link; notes go in messages |
-| Payout | `approve` only changes the status. The contributor's `collect` receives a fresh coin of their own (it may be worth zero) and merges it first, as `submit` does (Q3), and pays reward plus coin to the caller. Unlinkability needs the Q2 leak checks on a devnet 🔬 |
+| Payout | `approve` only changes the status. The contributor's `collect` receives a fresh coin of their own (it may be worth zero) and merges it first, as `submit` does (Q3), and pays reward plus coin to the caller. **Passed the Q2 leak checks on a devnet (2026-11-02):** the keys, the submitted link, the contributor's coin nonce, the payout nonce and both wallets' coin keys are not in public state, and the payout's nonce isn't the escrow coin's |
 | Arbiter | Optional, named at post time, with the same id on every bounty because it's a known party. Its only power is to overturn a rejection within the appeal window. Without an arbiter, a rejection reopens the work at once |
-| Locked rewards | Submitted work can't be refunded, so a contributor who submits and never collects leaves the reward locked for good. Fix: a long collect-by limit (for example 90 days after review-by), after which the poster can take it back. Not built yet |
-| Squatting | In first-to-claim mode, one person can claim, let the window run out, and claim again, keeping a bounty blocked for one fee per window. **Decided (2026-11-01):** no claim deposit, so contributors never need tokens up front. Instead, applicant mode, where the poster picks, is the default, and first to claim is an option for small, well-defined tasks. In first-to-claim mode the poster can also `release` an assignment while nothing has been submitted, which reopens it. The trade-off is that a contributor released before submitting loses their effort, though no funds. `release` isn't built yet |
+| Locked rewards | Submitted work can't be refunded, so a contributor who submits and never collects leaves the reward locked for good. **Built:** each deployment sets a `collectWindow`. The contributor must collect before `until + collectWindow` (review-by, or appeal-by after an overturn), and after that the poster can `refund` submitted or approved work. Every window is capped at a year, so these times can't overflow |
+| Squatting | In first-to-claim mode, one person can claim, let the window run out, and claim again, keeping a bounty blocked for one fee per window. **Decided (2026-11-01):** no claim deposit, so contributors never need tokens up front. Instead, applicant mode, where the poster picks, is the default, and first to claim is an option for small, well-defined tasks. In first-to-claim mode the poster can also `release` an assignment while nothing has been submitted, which reopens it. The trade-off is that a contributor released before submitting loses their effort, though no funds. `release` is built: poster only, first-to-claim only, and only while the work is assigned |
 | Messages | Encrypted between the poster's and the contributor's per-bounty keys. Storage is open: on chain costs DUST per message, and off chain needs a relay 🔬 |
 | Reminders | Worked out in the browser from the windows in public state, with no bot or server |
 
@@ -162,6 +162,7 @@ private-bounties/
 │   ├── bounty_preimage.compact   template contract (built)
 │   ├── bounty_factor.compact     template contract (built)
 │   ├── bounty_signed_record.compact  template contract (built)
+│   ├── bounty_reviewed_work.compact  template contract (built): reviewed work, section 5
 │   ├── schnorr.compact           module from zk-loan: in-circuit Schnorr verification
 │   ├── test_token.compact        test-only reward token
 │   ├── witnesses.ts              one generic set of witnesses for every template
@@ -271,10 +272,10 @@ the two-step version is no longer needed.
 | Escrow `submit` (merge + payout) | 16 | about 100 s to 134 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | `postBounty`, `refund` | 15 | about 40 s to 67 s per transaction, end to end | [Q2](spike/q2-escrow/RESULTS.md) |
 | **Full `submit`**: checker + key exchange + encryption + escrow | **16** | **about 11 s to prove (idle runner)**; 43 s (loaded laptop) | [Q11](spike/q11-full-submit/RESULTS.md) |
-| Reviewed work `collect` (merge and payout) | 16 | Not measured; the same size as the preimage `submit` | [Q13](spike/q13-reviewed-work/RESULTS.md) |
-| Reviewed work `postWork`, `refund` | 15 | Not measured | [Q13](spike/q13-reviewed-work/RESULTS.md) |
-| Reviewed work `submit`, `claim`, `assign`, `approve`, `reject`, `overturn` | 13 | Not measured; the pseudonym's SHA-256 sets the size | [Q13](spike/q13-reviewed-work/RESULTS.md) |
-| Reviewed work `reopen` | 9 | Not measured | [Q13](spike/q13-reviewed-work/RESULTS.md) |
+| Reviewed work `collect` (merge and payout) | 16 | 59 to 67 s per transaction, end to end, on a devnet runner; the same size as the preimage `submit`. Prover key 19.5 MB | [Q13](spike/q13-reviewed-work/RESULTS.md); the template, compiled with keys on 0.31.1, 2026-11-02 |
+| Reviewed work `postWork`, `refund` | 15 | `postWork` 36 to 43 s per transaction, end to end. Prover keys 11.0 and 10.0 MB: the template's listing, minimums and derived ID cost the same as in the other templates | Same |
+| Reviewed work `submit`, `claim`, `assign`, `release`, `approve`, `reject`, `overturn` | 13 | 24 to 30 s per transaction, end to end; the pseudonym's SHA-256 sets the size. Prover keys 2.8 to 3.1 MB | Same, and the devnet test, 2026-11-02 |
+| Reviewed work `reopen` | 9 | Not measured. Prover key 0.15 MB | Same |
 | Title and question on `postBounty` | 15, unchanged | The prover key grew by 85 bytes (11,017,896 to 11,017,981). The text's length doesn't change the circuit; it only adds to the transaction | `bounty_preimage`, compiled with keys on 0.31.1, 2026-10-31 |
 | Reward and post time in the listing | 15, unchanged | The prover key grew by another 291 bytes, to 11,018,272; `refund` and `submit` are unchanged | `bounty_preimage`, compiled with keys on 0.31.1, 2026-11-01 |
 | Second-audit fixes: the ID derived in the circuit, the minimum reward and window | 15, unchanged | `postBounty`'s prover key grew by about 7 KB (11,018,272 to 11,025,538 in preimage), one more `persistentHash`. `submit` and `refund` are unchanged in all three templates | All three templates, compiled with keys on 0.31.1, 2026-11-01 |
@@ -656,7 +657,7 @@ flowchart LR
 | Reviewed work: the poster rejects good work | The optional arbiter can overturn it. Without one, the contributor trusts the poster, as on today's bounty programs, but can't be ghosted |
 | Reviewed work: a contributor claims and never delivers | The assignment ends with the delivery window, and anyone can `reopen` the bounty |
 | Reviewed work: someone keeps re-claiming to block a bounty | Applicant mode, the default, isn't affected. In first-to-claim mode the poster can `release` an assignment that hasn't submitted (section 5, "Squatting") |
-| Reviewed work: a contributor submits and never collects | Planned collect-by limit, after which the poster can take the reward back (section 5) |
+| Reviewed work: a contributor submits and never collects | The collect-by limit: once it passes, the poster can take the reward back (section 5) |
 | Reviewed work: someone copies a submission | Submissions are encrypted to the poster, so there's nothing public to copy |
 | Reviewed work: the arbiter sides with the poster unfairly | A stated trust assumption: the arbiter is named at post time, so contributors can choose not to apply |
 
@@ -702,7 +703,7 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q10 | Which prover may a user's wallet use? | ✅ Decided | Every circuit has secret inputs, so the app proves on a local proof server by default. Wallet proving is an opt-in, with a warning that the wallet, and any hosted prover it uses, sees the proof's inputs (on the solve screen, the answer). It isn't blocked, so users without a local proof server aren't shut out |
 | Q11 | Cost of the full `submit` (checker, key exchange, encryption, escrow) | ✅ Answered | k = 16, about 11 s to prove on an idle runner; the escrow sets the size. [Results](spike/q11-full-submit/RESULTS.md) |
 | Q12 | Can a solver's coin be zero-value? | ✅ Answered | Yes: a solver holding none of the reward token submitted with a zero-value coin, was paid in full, and the payout passed the Q2 leak checks. Solvers don't need the token, and the contracts accept a zero-value solver coin (the reward must still be non-zero). [Results](spike/q2-escrow/RESULTS.md) |
-| Q13 | Reviewed work: can the contract enforce an exclusive claim window and a review clock with block-time comparisons only, keep the collect unlinkable, and let an arbiter overturn a rejection? | ✅ Works in memory | The contract passed 18 simulator tests: two-sided window checks, silence pays, collect merges a fresh coin first, arbiter overturn, refund. It found two gaps: squatting and rewards locked if nobody collects. Devnet leak checks and a wallet run still to do. [Results](spike/q13-reviewed-work/RESULTS.md) |
+| Q13 | Reviewed work: can the contract enforce an exclusive claim window and a review clock with block-time comparisons only, keep the collect unlinkable, and let an arbiter overturn a rejection? | ✅ Works on a devnet | The contract passed 18 simulator tests: two-sided window checks, silence pays, collect merges a fresh coin first, arbiter overturn, refund. It found two gaps: squatting and rewards locked if nobody collects. Both are fixed in the template, `bounty_reviewed_work` (`release` and the collect-by limit), which passes 25 simulator tests and 5 devnet tests (2026-11-02): applicant mode end to end with the Q2 leak checks, silence pays on real block time, first to claim with `release`, and the collect-by refund. A wallet run is still to do. [Results](spike/q13-reviewed-work/RESULTS.md), devnet test `src/test/bounty_reviewed_work.test.ts` |
 | Q14 | Can the UI read a contract's history (activity, post times, paid amounts) from the indexer? | ✅ Answered | Yes: `contract(address) { actions(limit) }` on the Preview indexer lists every action with its circuit name, block timestamp (in milliseconds) and the state after it. It doesn't say which bounty changed (compare states), and it doesn't page by offset. Post time and amount are simpler written into `listings` at post time, which they now are (section 7). [Results](spike/q14-indexer-history/RESULTS.md) |
 
 ## 19. Build plan (tentative)
