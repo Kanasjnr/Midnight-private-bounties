@@ -168,7 +168,8 @@ private-bounties/
 │   ├── signing.ts                off-chain Schnorr signing, for issuers of signed records
 │   └── index.ts
 ├── src/          API layer, providers, simulator and integration tests
-├── ui/           React app, started from midnight-examples templates/ui
+├── ui/           plain browser page, generated from midnight-examples templates/ui
+├── app/          the product frontend (Midnight design), reusing ui/'s wallet, providers and api file
 ├── spike/        week-1 measurements
 ├── docs/         this file, decisions, threat model
 ├── tutorials/    written as we build
@@ -412,6 +413,9 @@ flowchart TD
 ```
 
 ### Screens
+
+The app (`app/`) has the board, setup, post (preimage), bounty detail for solver and poster, and
+My bounties so far; the rest of the table is still to build ([app/README.md](app/README.md)).
 
 | Screen | Data source | Midnight piece |
 |---|---|---|
