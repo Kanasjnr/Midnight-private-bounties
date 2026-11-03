@@ -5,7 +5,7 @@ import { SessionProvider } from "~/session";
 import { TxProvider } from "~/tx";
 import { TopBar } from "~/components/top-bar";
 import { Tray } from "~/components/tray";
-import { BoardPage } from "~/pages/board";
+import { BoardPage, OpenBoardPage } from "~/pages/board";
 import { BountyPage } from "~/pages/bounty";
 import { MinePage } from "~/pages/mine";
 import { PostPage } from "~/pages/post";
@@ -13,6 +13,7 @@ import { PostStart, PostWorkPage } from "~/pages/post-work";
 import { WorkPage } from "~/pages/work";
 import { SetupPage } from "~/pages/setup";
 import { IssuePage } from "~/pages/issue";
+import { BackupPage } from "~/pages/backup";
 
 export function App() {
   return (
@@ -48,6 +49,10 @@ function Page({ route }: { route: Route }) {
       return <SetupPage />;
     case "issue":
       return <IssuePage />;
+    case "backup":
+      return <BackupPage />;
+    case "open-board":
+      return <OpenBoardPage route={route} />;
     case "post":
       return <PostStart />;
     case "post-answer":

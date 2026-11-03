@@ -26,6 +26,7 @@ import { href } from "~/router";
 import { useSession, type TemplateSession } from "~/session";
 import { Countdown } from "~/components/countdown";
 import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, Field, Input, Panel, StatusText, Visibility } from "~/components/ui";
+import { WalletGate } from "~/components/wallet-gate";
 
 export function TemplateBounty({ slot, v }: { slot: TemplateSession; v: TemplateView }) {
   const { now, hidden } = useSession();
@@ -164,6 +165,7 @@ function SolverSide({ slot, v }: { slot: TemplateSession; v: TemplateView }) {
   };
 
   return (
+    <WalletGate doing="solve it">
     <section className="flex flex-col gap-3">
       <h2 className="m-0 text-lg font-semibold">{v.template === "factor" ? "Your two factors" : "Your signed record"}</h2>
       {v.template === "factor" ? (
@@ -207,6 +209,7 @@ function SolverSide({ slot, v }: { slot: TemplateSession; v: TemplateView }) {
         {span(v.deadline - now)}; a submit can take a few minutes to land.
       </p>
     </section>
+    </WalletGate>
   );
 }
 

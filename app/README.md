@@ -73,6 +73,26 @@ and pass on retry).
 - **Per-browser marks** in localStorage, per network and board: hidden
   bounties, answers already read, bounties solved here. Losing them loses
   only the marks, never keys or funds.
+- **Key backup** (`#/backup`, from the account menu). One file holds the
+  private state of every contract on the board, exported by midnight-js and
+  encrypted under the store's passphrase, plus the board code and token
+  address. Restoring in a new browser imports the keys and joins the board.
+  If that browser already joined, it asks before replacing its keys. The
+  account menu shows a dot until the board's contracts are all in a backup
+  made here. Tested against midnight-js's level store in
+  `src/__tests__/backup.test.ts`.
+- **Browsing without a wallet.** On Preview and the local devnet the board,
+  bounty and work pages read straight from the network's public indexer
+  (`src/midnight/read-only.ts`), with the actions replaced by a prompt to
+  connect. Preprod and Mainnet indexers need a Blockfrost key, so there the
+  wallet's indexer is still needed. The board card copies a link
+  (`#/board/<network>/<code>`) that opens the board for anyone.
+- **Recent activity** on the board, from the indexer's history of each
+  contract (spike Q14, `src/midnight/activity.ts`): the last 15 actions per
+  contract, each state decoded and compared with the one before to name the
+  bounty it touched. It shows only what's public (titles, rewards, statuses),
+  never who acted, and refreshes every 30 seconds. A state from an older
+  contract version ends that contract's history there.
 - **Local proving by default** (spike Q10), as in `../ui`. Wallet proving is
   one click away in setup, with the warning shown wherever it applies.
 - **No effects.** Anything from outside React (the clock, the URL, browser
@@ -85,9 +105,7 @@ and pass on retry).
 
 ## Not yet
 
-Contributor profiles beyond what an application includes (and verified GitHub), messages, the inbox, the activity
-feed from the indexer (Q14), key backup, light mode and browsing
-without a wallet. Its store is separate from `../ui`'s: a different port is a
+Contributor profiles beyond what an application includes (and verified GitHub), messages, the inbox and light mode. Its store is separate from `../ui`'s: a different port is a
 different origin, so keys made on one page don't show on the other.
 
 ## Run

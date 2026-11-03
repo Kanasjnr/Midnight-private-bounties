@@ -418,8 +418,8 @@ flowchart TD
 The app (`app/`) has the board (both kinds, all four templates), setup, choosing the kind, posting
 with every template, the bounty page for solver and poster, the reviewed-work page for every role
 (apply with an application code, claim, submit, review, collect, refund, overturn, reopen), My
-bounties, and an issuer page that signs records into files. Still to build: profiles beyond what
-an application carries, messages and the activity feed ([app/README.md](app/README.md)).
+bounties, an issuer page that signs records into files, key backup and restore, read-only browsing with no wallet (on networks with a public indexer), and the activity feed (Q14).
+Still to build: profiles beyond what an application carries, and messages ([app/README.md](app/README.md)).
 
 | Screen | Data source | Midnight piece |
 |---|---|---|
@@ -653,7 +653,7 @@ flowchart LR
 | Bounty ID squatting | Fixed in the second audit (L3). `postBounty` derives the ID in the circuit from a secret salt and the poster's identity secret, so someone who copies a pending post gets a different ID and the poster's post still lands |
 | Board spam | Listings are permanent and up to the ledger's 32 KiB cell each. A deploy-time minimum reward and minimum open window make each post lock capital, not only fees (second audit, L1) |
 | A misleading listing | The text is the poster's word, not checked. The app shows the on-chain parameters as the authoritative ones, and a wrong answer is rejected before anything is proved, so a solver loses effort, not funds (second audit, S1, planned) |
-| Poster loses key `b` | An encrypted backup or export of the private state |
+| Poster loses key `b` | Key backup in the app: one file with every board contract's private state, exported by midnight-js and encrypted under the passphrase. A new browser restores it before or after joining |
 | `transientHash` changes at a hard fork | The poster's app decrypts as soon as a bounty is solved, keeps the plaintext, and pins its runtime version |
 | A buyer re-shares purchased data (v2) | Inherent to selling data. Out of scope |
 | Reviewed work: the poster never reviews | The review clock: once it runs out, the contributor collects without an approval |
