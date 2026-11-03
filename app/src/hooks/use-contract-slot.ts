@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { combineLatest, defer, map, type Observable } from "rxjs";
 import { errorMessage } from "@/lib/errors";
+import type { PublicDataProvider } from "@midnight-ntwrk/midnight-js-types";
 import type { PrivateBountiesPrivateState } from "@/midnight/contract";
 import type { ContractProviders } from "@/midnight/providers";
 import { useMidnightProviders } from "@/providers/midnight-providers";
@@ -49,9 +50,15 @@ const NO_STREAM = constantStore<Streamed<never>>({ value: null, error: null });
  * transaction step to the tray), joined from the address remembered for this
  * network, then the ledger as the indexer pushes it with this account's
  * private state. Private state is read once per join: its secrets are made
- * when the account joins and never change.
+ * when the account joins and never change. With no wallet, `browse` (a public
+ * indexer) streams the ledger alone, so the board can be read but not used.
  */
-export function useContractSlot<C, L, V>(cfg: SlotConfig<C, L, V>, networkId: string | null, report: (p: TxPhase) => void): Slot<C, L, V> {
+export function useContractSlot<C, L, V>(
+  cfg: SlotConfig<C, L, V>,
+  networkId: string | null,
+  report: (p: TxPhase) => void,
+  browse: PublicDataProvider | null,
+): Slot<C, L, V> {
   const { providersFor } = useMidnightProviders();
   const [address, setAddress] = useLocalValue(`${cfg.storageKey}${networkId ?? "unknown"}`);
   const providersStore = useMemo(
@@ -75,8 +82,10 @@ export function useContractSlot<C, L, V>(cfg: SlotConfig<C, L, V>, networkId: st
               map(([state, ps]) => ({ state, ps })),
             ),
           )
-        : (NO_STREAM as typeof NO_STREAM),
-    [providers, address, contract, cfg],
+        : browse && address && !providers
+          ? observableStore(cfg.stream({ publicDataProvider: browse } as AnyProviders, address).pipe(map((state) => ({ state, ps: null }))))
+          : (NO_STREAM as typeof NO_STREAM),
+    [providers, address, contract, cfg, browse],
   );
   const streamed = useStore(streamStore) as Streamed<{ state: L; ps: PS | null }>;
   const state = streamed.value?.state ?? null;
