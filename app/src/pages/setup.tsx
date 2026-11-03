@@ -2,7 +2,7 @@
 // each checked live. Browsing needs none of them once a board is joined.
 import { useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
-import { validatePassword } from "@midnight-ntwrk/midnight-js-utils";
+import { toHex, validatePassword } from "@midnight-ntwrk/midnight-js-utils";
 import { useWallet } from "@/hooks/use-wallet";
 import { errorMessage } from "@/lib/errors";
 import { DEFAULT_PROOF_SERVER_URL } from "@/midnight/providers";
@@ -297,17 +297,25 @@ function DustStep() {
 }
 
 function BoardStep() {
-  const { deployment, token, canMint, tokenProviders, deployToken, mint, rewardBalance, state } = useSession();
+  const { deployment, token, canMint, tokenProviders, deployToken, mint, rewardBalance, state, work } = useSession();
   const [pasted, setPasted] = useState("");
   const [tokenPasted, setTokenPasted] = useState("");
   const [mintAmount, setMintAmount] = useState("1000");
   const busy = deployment.busy !== null;
   const joined = deployment.contract !== null;
   const validAddress = (s: string) => /^[0-9a-fA-F]{64}$/.test(s.trim());
+  // A board code is the verified-answer contract's address, then optionally
+  // a dot and the reviewed-work contract's.
+  const parsed = (() => {
+    const [a, b, ...rest] = pasted.trim().toLowerCase().split(".");
+    if (!a || rest.length > 0 || !validAddress(a) || (b !== undefined && !validAddress(b))) return null;
+    return { verified: a, work: b ?? null };
+  })();
 
   if (joined && state) {
     return (
       <div className="flex flex-col gap-3 text-sm">
+        <WorkStep />
         {canMint ? (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-muted">Test tokens for rewards (they carry no value):</span>
@@ -357,15 +365,17 @@ function BoardStep() {
         className="flex flex-col gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (validAddress(pasted)) void deployment.join(pasted.trim().toLowerCase());
+          if (!parsed) return;
+          work.setAddress(parsed.work);
+          void deployment.join(parsed.verified);
         }}
       >
         <label htmlFor="board-address" className="font-semibold">
-          Join a board by its address
+          Join a board by its code
         </label>
         <div className="flex flex-wrap gap-2">
-          <Input id="board-address" className="flex-[1_1_320px] font-mono text-[13px]" placeholder="64 hex characters" value={pasted} onChange={(e) => setPasted(e.target.value)} />
-          <Button type="submit" size="lg" disabled={busy || !validAddress(pasted)} busy={deployment.busy === "joining"}>
+          <Input id="board-address" className="flex-[1_1_320px] font-mono text-[13px]" placeholder="The board code, or a contract address" value={pasted} onChange={(e) => setPasted(e.target.value)} />
+          <Button type="submit" size="lg" disabled={busy || !parsed} busy={deployment.busy === "joining"}>
             Join
           </Button>
         </div>
@@ -399,6 +409,64 @@ function BoardStep() {
         </div>
       </div>
       {deployment.error && <p className="m-0 text-sm break-words text-bad">{deployment.error}</p>}
+    </div>
+  );
+}
+
+/** The board's reviewed-work contract: joined, joining, or not added yet. */
+function WorkStep() {
+  const { work, deployment, colorHex } = useSession();
+  const [pasted, setPasted] = useState("");
+  const busy = deployment.busy !== null;
+  const valid = /^[0-9a-f]{64}$/.test(pasted.trim().toLowerCase());
+  if (work.address && work.contract) {
+    const otherToken = work.state !== null && colorHex !== null && toHex(work.state.rewardColor) !== colorHex;
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="text-muted">Reviewed work: joined {short(work.address, 10, 8)}.</span>
+        {otherToken && (
+          <span className="text-warn">
+            It pays in a different token from this board, so rewards and balances won't line up. Use the reviewed-work contract that came
+            with this board's code.
+          </span>
+        )}
+      </div>
+    );
+  }
+  if (work.address) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-muted">
+          {work.joining ? "Joining the reviewed-work contract" : "Couldn't join the reviewed-work contract"} {short(work.address, 10, 8)}
+        </span>
+        {!work.joining && (
+          <>
+            <Button variant="ghost" size="sm" onClick={work.retry}>
+              Retry
+            </Button>
+            <Button variant="quiet" onClick={() => work.setAddress(null)}>
+              Forget it
+            </Button>
+          </>
+        )}
+        {work.joinError && <p className="m-0 w-full text-sm break-words text-bad">{work.joinError}</p>}
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2 border-b border-line-soft pb-4">
+      <span className="font-semibold">Add reviewed work to this board</span>
+      <span className="text-muted">A second contract, paying in the same token, for work a person reviews.</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="ghost" disabled={busy || !work.providers} busy={deployment.busy === "Starting reviewed work"} onClick={() => void work.deploy()}>
+          Deploy it
+        </Button>
+        <span className="text-faint">or join one:</span>
+        <Input aria-label="Reviewed-work contract address" className="h-9 flex-[1_1_200px] font-mono text-[13px]" placeholder="contract address" value={pasted} onChange={(e) => setPasted(e.target.value)} />
+        <Button variant="ghost" size="sm" disabled={!valid} onClick={() => work.setAddress(pasted.trim().toLowerCase())}>
+          Join
+        </Button>
+      </div>
     </div>
   );
 }

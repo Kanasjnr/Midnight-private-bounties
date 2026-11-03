@@ -1,25 +1,21 @@
 import type { ReactNode } from "react";
-import { Status, type BountyView } from "@/midnight/private-bounties-api";
-import { statusOf } from "~/lib/board";
+import type { BoardItem } from "~/lib/items";
 import { amount, ago } from "~/lib/format";
 import { cleanTitle } from "~/lib/sanitize";
-import { href } from "~/router";
 import { Countdown } from "~/components/countdown";
 import { Chip, cx, StatusText } from "~/components/ui";
 
-const ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:grid-cols-[minmax(0,1fr)_110px_150px_130px]";
+const ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:grid-cols-[minmax(0,1fr)_110px_160px_170px]";
 
-/** Rows of bounties, as on the board and in My bounties. */
+/** Rows of bounties of either kind, as on the board and in My bounties. */
 export function BountyTable({
   rows,
-  address,
   now,
   copies,
   empty,
   footer,
 }: {
-  rows: BountyView[];
-  address: string;
+  rows: BoardItem[];
   now: bigint;
   /** Bounties whose text copies an earlier one. */
   copies?: ReadonlySet<string>;
@@ -36,22 +32,18 @@ export function BountyTable({
       </div>
       {rows.length === 0 && <div className="px-5 py-10 text-center text-muted">{empty}</div>}
       {rows.map((b) => {
-        const s = statusOf(b, now);
-        const soon = s.tone === "open" && b.deadline - now < 3_600n;
+        const soon = "to" in b.clock && b.clock.to > now && b.clock.to - now < 3_600n;
         return (
-          <a
-            key={b.idHex}
-            href={href({ name: "bounty", address, id: b.idHex })}
-            className={cx(ROW, "border-b border-line-soft px-5 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-raised")}
-          >
+          <a key={`${b.kind}:${b.idHex}`} href={b.href} className={cx(ROW, "border-b border-line-soft px-5 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-raised")}>
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="flex flex-wrap items-center gap-2">
                 <span className="text-base font-semibold tracking-tight">{cleanTitle(b.title) || "Untitled"}</span>
                 {b.mine && <Chip>Yours</Chip>}
+                {b.working && <Chip className="border-private/40 text-private">You're on it</Chip>}
                 {copies?.has(b.idHex) && <Chip className="border-warn-line text-warn">Copies an earlier bounty</Chip>}
               </span>
               <span className="truncate text-sm text-muted">
-                <span className="font-semibold text-fg-2">Verified</span> <span className="text-faint">· Preimage</span>
+                <span className="font-semibold text-fg-2">{b.kind === "work" ? "Reviewed" : "Verified"}</span> <span className="text-faint">· {b.sub}</span>
                 {b.postedAt !== null && <span className="text-faint"> · posted {ago(b.postedAt, now)}</span>}
                 <span className="text-fg-2 sm:hidden"> · {b.reward !== null ? `${amount(b.reward)} TEST` : ""}</span>
               </span>
@@ -59,9 +51,11 @@ export function BountyTable({
             <span className="hidden text-right font-mono text-[15px] font-medium whitespace-nowrap sm:block">
               {b.reward !== null ? amount(b.reward) : "–"} <span className="text-xs text-faint">TEST</span>
             </span>
-            <span className={cx("hidden text-sm sm:block", soon ? "text-warn" : "text-fg-2")}>{timeText(b)}</span>
+            <span className={cx("hidden text-sm sm:block", soon ? "text-warn" : "text-fg-2")}>
+              {"to" in b.clock ? <Countdown deadline={b.clock.to} before={b.clock.before} after={b.clock.after} /> : b.clock.text}
+            </span>
             <span className="text-sm">
-              <StatusText {...s} />
+              <StatusText {...b.status} />
             </span>
           </a>
         );
@@ -71,7 +65,3 @@ export function BountyTable({
   );
 }
 
-function timeText(b: BountyView): ReactNode {
-  if (b.status === Status.OPEN) return <Countdown deadline={b.deadline} />;
-  return b.status === Status.SOLVED ? "Solved" : "Refunded";
-}

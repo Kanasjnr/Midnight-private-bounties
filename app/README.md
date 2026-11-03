@@ -19,9 +19,25 @@ The app's own code is under `~/…` (`src/`).
 |---|---|
 | `#/` | The board: totals, open and closed bounties, search and sort, what needs you, proving status |
 | `#/setup` | The five-step checklist: wallet, private store, proof server, DUST, board (join by address, or deploy a token and a bounty contract, then mint test tokens) |
-| `#/post` | Post a preimage bounty: details, then a review of what goes on chain |
-| `#/b/<board>/<id>` | One bounty. Solvers check their answer as they type, then prove and submit; posters decrypt the answer here, or claim the refund |
-| `#/mine` | Bounties posted from this browser, and the ones it solved |
+| `#/post` | Choose the kind: reviewed work or a verified answer |
+| `#/post/answer` | Post a preimage bounty: details, then a review of what goes on chain |
+| `#/post/work` | Post reviewed work: the reward, who works on it (applicants or first to claim), the delivery and review windows, the final deadline, an optional arbiter, then a review |
+| `#/b/<board>/<id>` | One verified-answer bounty. Solvers check their answer as they type, then prove and submit; posters decrypt the answer here, or claim the refund |
+| `#/w/<contract>/<id>` | One piece of reviewed work, by role. Anyone applies (an application code) or claims; the assigned contributor submits a link and collects; the poster reads applications, assigns, releases a claim, decrypts the link, approves or rejects, and takes back an unearned reward; the arbiter overturns a rejection; anyone reopens work whose window ran out |
+| `#/mine` | Posted by you, working on, and paid to you here, with what needs you first |
+
+A board is two contracts paying in the same token: the preimage template
+and the reviewed-work template. Its code is the first one's address, a dot,
+and the second's. Setup joins both from the code, or deploys the second one
+next to the first.
+
+**Application codes.** In applicant mode, the applicant writes a plan (and,
+if they want, a name and links). The page encrypts it to the poster's key for
+that bounty and turns it into a code the applicant sends however the
+description says. The key comes from the template's pure `applicationKey`,
+and AES-GCM in the browser does the encryption, with the bounty ID bound in.
+The poster pastes the code to read it and assign. Nothing about an
+application goes on chain.
 
 Every transaction shows in the tray at the bottom right, step by step:
 running the circuit, proving, wallet approval, sending, waiting for a block.
@@ -57,8 +73,9 @@ and pass on retry).
 
 ## Not yet
 
-The factor and signed-record templates, reviewed-work bounties, the inbox, the
-activity feed from the indexer (Q14), key backup, light mode and browsing
+The factor and signed-record templates, contributor profiles beyond what an
+application includes (and verified GitHub), messages, the inbox, the activity
+feed from the indexer (Q14), key backup, light mode and browsing
 without a wallet. Its store is separate from `../ui`'s: a different port is a
 different origin, so keys made on one page don't show on the other.
 
@@ -79,10 +96,10 @@ yarn workspace @midnight-ntwrk/example-private-bounties-app dev         # http:/
 | `dev` | copies ZK assets into `public/`, then runs Vite on port 5174 |
 | `build` | copies ZK assets, typechecks, builds to `dist/` |
 | `typecheck` | `tsc -b` |
-| `test:unit` | vitest: the board logic, formatting, text cleaning, routes, the stores, and the transaction tracker |
+| `test:unit` | vitest: the board logic, formatting, text cleaning, routes, the stores, the transaction tracker, and reviewed work against the compiled contract (every pre-check against every circuit, application codes, the submitted link) |
 
 ## Verification
 
 Typecheck, unit tests and the production bundle pass. Nothing has run
-against a wallet yet: the post, solve, decrypt and refund flow needs a run on
-Preview with two wallet accounts, as `../ui` had in spike Q6.
+against a wallet yet: both kinds' flows need a run on Preview with two wallet
+accounts, as `../ui` had in spike Q6.

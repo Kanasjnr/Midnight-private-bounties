@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ChevronDown, Lock } from "lucide-react";
 import { useWallet } from "@/hooks/use-wallet";
 import { NIGHT_COLOR } from "@/lib/tokens";
-import { Status } from "@/midnight/private-bounties-api";
 import { useMidnightProviders } from "@/providers/midnight-providers";
 import { amount, short, SPECK_PER_DUST, STAR_PER_NIGHT, units } from "~/lib/format";
 import { href, type Route } from "~/router";
@@ -30,10 +29,10 @@ export function Logo() {
 export function TopBar({ route }: { route: Route }) {
   const { status, networkId, requestedNetworkId } = useWallet();
   const { locked } = useMidnightProviders();
-  const { views, read } = useSession();
+  const { items } = useSession();
   const connected = status === "connected";
   const ready = connected && !locked;
-  const toRead = views.filter((b) => b.mine && b.status === Status.SOLVED && !read.set.has(b.idHex)).length;
+  const toRead = items.filter((b) => b.needs !== null).length;
 
   const tabs: { route: Route; label: string; badge?: number }[] = [
     { route: { name: "board" }, label: "Board" },
@@ -46,7 +45,7 @@ export function TopBar({ route }: { route: Route }) {
         <Logo />
         <nav aria-label="Main" className="flex flex-wrap gap-6">
           {tabs.map((t) => {
-            const on = t.route.name === route.name || (t.route.name === "board" && route.name === "bounty");
+            const on = t.route.name === route.name || (t.route.name === "board" && (route.name === "bounty" || route.name === "work"));
             return (
               <a
                 key={t.label}

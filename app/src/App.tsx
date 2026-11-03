@@ -9,6 +9,8 @@ import { BoardPage } from "~/pages/board";
 import { BountyPage } from "~/pages/bounty";
 import { MinePage } from "~/pages/mine";
 import { PostPage } from "~/pages/post";
+import { PostStart, PostWorkPage } from "~/pages/post-work";
+import { WorkPage } from "~/pages/work";
 import { SetupPage } from "~/pages/setup";
 
 export function App() {
@@ -44,7 +46,13 @@ function Page({ route }: { route: Route }) {
     case "setup":
       return <SetupPage />;
     case "post":
+      return <PostStart />;
+    case "post-answer":
       return <PostPage />;
+    case "post-work":
+      return <PostWorkPage />;
+    case "work":
+      return <WorkPage route={route} />;
     case "mine":
       return <MinePage />;
     case "bounty":

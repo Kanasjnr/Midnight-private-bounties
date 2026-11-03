@@ -3,7 +3,7 @@
 import { Status, type BountyView } from "@/midnight/private-bounties-api";
 import { cleanDetails, cleanTitle } from "~/lib/sanitize";
 
-export type Tone = "open" | "ok" | "warn" | "muted";
+export type Tone = "open" | "ok" | "warn" | "muted" | "private";
 
 /** A bounty's status in words, with the color it's shown in. */
 export function statusOf(b: BountyView, now: bigint): { label: string; tone: Tone } {
@@ -104,7 +104,7 @@ function compare(sort: Sort): (a: BountyView, b: BountyView) => number {
  * A copy of a real listing is how a misleading one would get attention, so
  * the board flags it (second audit, S1). The earliest post keeps no flag.
  */
-export function duplicates(rows: BountyView[]): Set<string> {
+export function duplicates<T extends { idHex: string; title: string; details: string; postedAt: bigint | null; deadline: bigint }>(rows: T[]): Set<string> {
   const byTime = [...rows].sort((a, b) => {
     const x = a.postedAt ?? a.deadline;
     const y = b.postedAt ?? b.deadline;
