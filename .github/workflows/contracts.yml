@@ -3,8 +3,11 @@ name: Contracts
 # On every PR into next-release and main:
 #   Contracts             compile with proving keys, typecheck, simulator tests,
 #                         then the browser UI: template drift check, typecheck,
-#                         unit tests and a production build
-#   Contracts on devnet   the devnet tests, with real proofs and transactions
+#                         unit tests and a production build, then the
+#                         same for the app
+#   Contracts on devnet   the devnet tests, with real proofs and transactions:
+#                         one job for the verified-answer templates, one for
+#                         reviewed work
 # The package runs inside a checkout of midnight-examples, pinned below, for
 # its simulator package, wallets and devnet tooling.
 
@@ -66,6 +69,13 @@ jobs:
       - name: Enable Corepack (Yarn 4)
         run: corepack enable
 
+      # app/ is this project's own frontend, not a template UI, so the
+      # examples repo's workspace globs don't cover it. Add one for it.
+      - name: Add app/ as a workspace
+        working-directory: examples-repo
+        run: |
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.workspaces.push("examples/*/app");fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+
       # This package is a new workspace, so the lockfile changes. Yarn makes
       # installs immutable in CI by default, so turn that off here.
       - name: Install dependencies
@@ -109,10 +119,34 @@ jobs:
         working-directory: examples-repo
         run: yarn workspace @midnight-ntwrk/example-private-bounties-ui build
 
+      - name: Typecheck the app
+        working-directory: examples-repo
+        run: yarn workspace @midnight-ntwrk/example-private-bounties-app typecheck
+
+      - name: Run the app unit tests
+        working-directory: examples-repo
+        run: yarn workspace @midnight-ntwrk/example-private-bounties-app test:unit
+
+      - name: Build the app
+        working-directory: examples-repo
+        run: yarn workspace @midnight-ntwrk/example-private-bounties-app build
+
   devnet:
-    name: Contracts on devnet
+    name: Contracts on devnet (${{ matrix.suite }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Each suite gets its own runner and devnet: together they would not fit
+    # in one job's time limit.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: verified answers
+            key: verified
+            tests: src/test/bounty_preimage.test.ts src/test/bounty_factor.test.ts src/test/bounty_signed_record.test.ts
+          - suite: reviewed work
+            key: reviewed
+            tests: src/test/bounty_reviewed_work.test.ts
     permissions:
       contents: read
     steps:
@@ -175,7 +209,7 @@ jobs:
         working-directory: ${{ env.PACKAGE }}
         run: |
           set -o pipefail
-          yarn test:local 2>&1 | tee devnet-run.log
+          yarn test:local ${{ matrix.tests }} 2>&1 | tee devnet-run.log
 
       - name: Collect service logs on failure
         if: failure()
@@ -191,8 +225,26 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  #v7.0.2
         with:
-          name: contracts-devnet-logs
+          name: contracts-devnet-logs-${{ matrix.key }}
           path: |
             ${{ env.PACKAGE }}/devnet-run.log
             ${{ env.PACKAGE }}/logs/
           if-no-files-found: warn
+
+  # One stable check name for branch protection, which requires "Contracts on
+  # devnet". The devnet job runs once per suite, under per-suite names; this
+  # fails unless every suite passed.
+  devnet-result:
+    name: Contracts on devnet
+    needs: [devnet]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check every suite passed
+        env:
+          RUNS: ${{ needs.devnet.result }}
+        run: |
+          echo "devnet=$RUNS"
+          [ "$RUNS" = success ]
