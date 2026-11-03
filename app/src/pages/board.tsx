@@ -266,14 +266,14 @@ export function ProvingCard() {
   );
 }
 
-/** One string that joins both of a board's contracts: `<verified>` or `<verified>.<reviewed work>`. */
-export function boardCode(verified: string, work: string | null): string {
-  return work ? `${verified}.${work}` : verified;
+/** One string that joins all of a board's contracts (parseBoardCode in setup reads it back). */
+export function boardCode(verified: string, work: string | null, factor: string | null = null, signed: string | null = null): string {
+  return [verified, work ?? "", factor ?? "", signed ?? ""].join(".").replace(/\.+$/, "");
 }
 
 function BoardCard({ address }: { address: string }) {
-  const { work } = useSession();
-  const code = boardCode(address, work.address);
+  const { work, templates } = useSession();
+  const code = boardCode(address, work.address, templates.factor.address, templates.signed.address);
   const arbiter = work.ps ? toHex(workCircuits.arbiterId(work.ps.sk)) : null;
   return (
     <section aria-labelledby="board-title" className="flex flex-col gap-2 rounded-lg border border-line p-4">
@@ -285,7 +285,7 @@ function BoardCard({ address }: { address: string }) {
         <CopyButton text={code} label="Copy the board code" />
       </span>
       <span className="text-[13px] text-muted">
-        {work.address ? "Both contracts in one code: share it so others can join." : "One contract so far. Share the code so others can join."}
+        Every contract of the board in one code. Share it so others can join.
       </span>
       {arbiter && (
         <span className="flex items-center gap-1 text-[13px] text-muted">

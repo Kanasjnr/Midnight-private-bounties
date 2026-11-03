@@ -6,7 +6,7 @@ import { cleanDetails, cleanTitle } from "~/lib/sanitize";
 export type Tone = "open" | "ok" | "warn" | "muted" | "private";
 
 /** A bounty's status in words, with the color it's shown in. */
-export function statusOf(b: BountyView, now: bigint): { label: string; tone: Tone } {
+export function statusOf(b: Pick<BountyView, "status" | "deadline" | "mine">, now: bigint): { label: string; tone: Tone } {
   if (b.status === Status.SOLVED) return { label: "Solved", tone: "ok" };
   if (b.status === Status.REFUNDED) return { label: "Refunded", tone: "muted" };
   if (now < b.deadline) return { label: "Open", tone: "open" };

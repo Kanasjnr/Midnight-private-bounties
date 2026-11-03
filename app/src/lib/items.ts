@@ -3,6 +3,7 @@
 // table work on these.
 import { Status, type BountyView } from "@/midnight/private-bounties-api";
 import { WorkStatus, windowEnd, workActionError, type WorkLedger, type WorkView } from "~/midnight/work-api";
+import { TEMPLATES, type TemplateView } from "~/midnight/verified-api";
 import { statusOf, type Tone } from "~/lib/board";
 import { cleanDetails, cleanTitle } from "~/lib/sanitize";
 import { href } from "~/router";
@@ -74,6 +75,31 @@ export function answerItem(b: BountyView, address: string, now: bigint, marks: M
     href: href({ name: "bounty", address, id: b.idHex }),
     needs,
     earnedHere: !b.mine && b.status === Status.SOLVED && marks.solvedHere.has(b.idHex),
+  };
+}
+
+/** A factor or signed-record bounty: the same shape of row as a preimage one. */
+export function templateItem(v: TemplateView, address: string, now: bigint, marks: Marks): BoardItem {
+  const open = v.status === Status.OPEN;
+  return {
+    kind: "answer",
+    idHex: v.idHex,
+    title: v.title,
+    details: v.details,
+    reward: v.reward,
+    postedAt: v.postedAt,
+    deadline: v.deadline,
+    mine: v.mine,
+    working: false,
+    active: open && now < v.deadline,
+    escrowed: open,
+    paid: v.status === Status.SOLVED,
+    status: statusOf(v, now),
+    clock: open ? { to: v.deadline, before: "Ends in", after: "Ended" } : { text: v.status === Status.SOLVED ? "Solved" : "Refunded" },
+    sub: TEMPLATES[v.template].name,
+    href: href({ name: "bounty", address, id: v.idHex }),
+    needs: !v.mine ? null : v.status === Status.SOLVED && !marks.read.has(v.idHex) ? "read" : open && now >= v.deadline ? "refund" : null,
+    earnedHere: !v.mine && v.status === Status.SOLVED && marks.solvedHere.has(v.idHex),
   };
 }
 

@@ -71,6 +71,7 @@ export function SetupPage() {
             n={5}
             title="Join a board"
             state={stepState(4)}
+            keepOpen
             note={boardOk && deployment.address ? `Bounty contract ${short(deployment.address, 10, 8)}` : "A board is one bounty contract"}
           >
             {unlocked && <BoardStep />}
@@ -110,7 +111,8 @@ export function SetupPage() {
   );
 }
 
-function Step({ n, title, note, state, children }: { n: number; title: string; note: string; state: StepState; children?: ReactNode }) {
+/** `keepOpen`: show the step's controls even once it's done (the board step, which has more to do after joining). */
+function Step({ n, title, note, state, children, keepOpen = false }: { n: number; title: string; note: string; state: StepState; children?: ReactNode; keepOpen?: boolean }) {
   return (
     <li className={cx("rounded-lg border bg-surface", state === "current" ? "border-line-hover" : "border-line")}>
       <div className="flex items-start gap-4 px-5 py-4">
@@ -131,7 +133,7 @@ function Step({ n, title, note, state, children }: { n: number; title: string; n
           <span className="text-sm break-words text-muted">{note}</span>
         </span>
       </div>
-      {children && state !== "done" && <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-4 sm:pl-15">{children}</div>}
+      {children && (state !== "done" || keepOpen) && <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-4 sm:pl-15">{children}</div>}
     </li>
   );
 }
@@ -297,25 +299,31 @@ function DustStep() {
 }
 
 function BoardStep() {
-  const { deployment, token, canMint, tokenProviders, deployToken, mint, rewardBalance, state, work } = useSession();
+  const { deployment, token, canMint, tokenProviders, deployToken, mint, rewardBalance, state, work, templates } = useSession();
   const [pasted, setPasted] = useState("");
   const [tokenPasted, setTokenPasted] = useState("");
   const [mintAmount, setMintAmount] = useState("1000");
   const busy = deployment.busy !== null;
   const joined = deployment.contract !== null;
   const validAddress = (s: string) => /^[0-9a-fA-F]{64}$/.test(s.trim());
-  // A board code is the verified-answer contract's address, then optionally
-  // a dot and the reviewed-work contract's.
-  const parsed = (() => {
-    const [a, b, ...rest] = pasted.trim().toLowerCase().split(".");
-    if (!a || rest.length > 0 || !validAddress(a) || (b !== undefined && !validAddress(b))) return null;
-    return { verified: a, work: b ?? null };
-  })();
+  const parsed = parseBoardCode(pasted);
 
   if (joined && state) {
     return (
       <div className="flex flex-col gap-3 text-sm">
-        <WorkStep />
+        <ExtraStep
+          slot={work}
+          name="reviewed work"
+          about="A contract for work a person reviews, paying in the same token."
+          busyLabel="Starting reviewed work"
+        />
+        <ExtraStep slot={templates.factor} name="factor bounties" about="Solvers prove they know two factors of a number." busyLabel="Adding factor bounties" />
+        <ExtraStep
+          slot={templates.signed}
+          name="signed-record bounties"
+          about="Solvers prove they hold a record an issuer signed."
+          busyLabel="Adding signed record bounties"
+        />
         {canMint ? (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-muted">Test tokens for rewards (they carry no value):</span>
@@ -367,6 +375,8 @@ function BoardStep() {
           e.preventDefault();
           if (!parsed) return;
           work.setAddress(parsed.work);
+          templates.factor.setAddress(parsed.factor);
+          templates.signed.setAddress(parsed.signed);
           void deployment.join(parsed.verified);
         }}
       >
@@ -413,57 +423,82 @@ function BoardStep() {
   );
 }
 
-/** The board's reviewed-work contract: joined, joining, or not added yet. */
-function WorkStep() {
-  const { work, deployment, colorHex } = useSession();
+/**
+ * A board code: the contracts' addresses joined by dots, in a fixed order
+ * (verified answers, reviewed work, factor, signed record), with empty places
+ * for ones the board doesn't have. A single address joins just the first.
+ */
+export function parseBoardCode(text: string): { verified: string; work: string | null; factor: string | null; signed: string | null } | null {
+  const parts = text.trim().toLowerCase().split(".");
+  if (parts.length > 4) return null;
+  const [verified, work, factor, signed] = parts;
+  const ok = (a: string | undefined) => a === undefined || a === "" || /^[0-9a-f]{64}$/.test(a);
+  if (!verified || !/^[0-9a-f]{64}$/.test(verified) || ![work, factor, signed].every(ok)) return null;
+  const or = (a: string | undefined) => (a ? a : null);
+  return { verified, work: or(work), factor: or(factor), signed: or(signed) };
+}
+
+interface ExtraSlot {
+  address: string | null;
+  setAddress: (a: string | null) => void;
+  providers: unknown;
+  contract: unknown;
+  joining: boolean;
+  joinError: string | null;
+  retry: () => void;
+  state: { rewardColor: Uint8Array } | null;
+  deploy: () => Promise<void>;
+}
+
+/** One of the board's other contracts: joined, joining, or not added yet. */
+function ExtraStep({ slot, name, about, busyLabel }: { slot: ExtraSlot; name: string; about: string; busyLabel: string }) {
+  const { deployment, colorHex } = useSession();
   const [pasted, setPasted] = useState("");
   const busy = deployment.busy !== null;
   const valid = /^[0-9a-f]{64}$/.test(pasted.trim().toLowerCase());
-  if (work.address && work.contract) {
-    const otherToken = work.state !== null && colorHex !== null && toHex(work.state.rewardColor) !== colorHex;
+  const Name = name[0]!.toUpperCase() + name.slice(1);
+  if (slot.address && slot.contract) {
+    const otherToken = slot.state !== null && colorHex !== null && toHex(slot.state.rewardColor) !== colorHex;
     return (
       <div className="flex flex-col gap-1">
-        <span className="text-muted">Reviewed work: joined {short(work.address, 10, 8)}.</span>
-        {otherToken && (
-          <span className="text-warn">
-            It pays in a different token from this board, so rewards and balances won't line up. Use the reviewed-work contract that came
-            with this board's code.
-          </span>
-        )}
+        <span className="text-muted">
+          {Name}: joined {short(slot.address, 10, 8)}.
+        </span>
+        {otherToken && <span className="text-warn">It pays in a different token from this board, so rewards and balances won't line up. Use the one that came with this board's code.</span>}
       </div>
     );
   }
-  if (work.address) {
+  if (slot.address) {
     return (
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-muted">
-          {work.joining ? "Joining the reviewed-work contract" : "Couldn't join the reviewed-work contract"} {short(work.address, 10, 8)}
+          {slot.joining ? `Joining ${name}` : `Couldn't join ${name}`} {short(slot.address, 10, 8)}
         </span>
-        {!work.joining && (
+        {!slot.joining && (
           <>
-            <Button variant="ghost" size="sm" onClick={work.retry}>
+            <Button variant="ghost" size="sm" onClick={slot.retry}>
               Retry
             </Button>
-            <Button variant="quiet" onClick={() => work.setAddress(null)}>
+            <Button variant="quiet" onClick={() => slot.setAddress(null)}>
               Forget it
             </Button>
           </>
         )}
-        {work.joinError && <p className="m-0 w-full text-sm break-words text-bad">{work.joinError}</p>}
+        {slot.joinError && <p className="m-0 w-full text-sm break-words text-bad">{slot.joinError}</p>}
       </div>
     );
   }
   return (
     <div className="flex flex-col gap-2 border-b border-line-soft pb-4">
-      <span className="font-semibold">Add reviewed work to this board</span>
-      <span className="text-muted">A second contract, paying in the same token, for work a person reviews.</span>
+      <span className="font-semibold">Add {name} to this board</span>
+      <span className="text-muted">{about}</span>
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" disabled={busy || !work.providers} busy={deployment.busy === "Starting reviewed work"} onClick={() => void work.deploy()}>
+        <Button variant="ghost" disabled={busy || !slot.providers} busy={deployment.busy === busyLabel} onClick={() => void slot.deploy()}>
           Deploy it
         </Button>
         <span className="text-faint">or join one:</span>
-        <Input aria-label="Reviewed-work contract address" className="h-9 flex-[1_1_200px] font-mono text-[13px]" placeholder="contract address" value={pasted} onChange={(e) => setPasted(e.target.value)} />
-        <Button variant="ghost" size="sm" disabled={!valid} onClick={() => work.setAddress(pasted.trim().toLowerCase())}>
+        <Input aria-label={`${Name} contract address`} className="h-9 flex-[1_1_200px] font-mono text-[13px]" placeholder="contract address" value={pasted} onChange={(e) => setPasted(e.target.value)} />
+        <Button variant="ghost" size="sm" disabled={!valid} onClick={() => slot.setAddress(pasted.trim().toLowerCase())}>
           Join
         </Button>
       </div>

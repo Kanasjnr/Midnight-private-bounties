@@ -20,16 +20,25 @@ import { cleanDetails, cleanTitle, hadHiddenCharacters } from "~/lib/sanitize";
 import { href, type Route } from "~/router";
 import { useSession } from "~/session";
 import { Loading } from "~/pages/board";
+import { TemplateBounty } from "~/pages/template-bounty";
 import { Countdown } from "~/components/countdown";
 import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, LinkButton, Panel, StatusText, Textarea, Visibility } from "~/components/ui";
 
 export function BountyPage({ route }: { route: Extract<Route, { name: "bounty" }> }) {
   const { status } = useWallet();
   const { locked } = useMidnightProviders();
-  const { deployment, state, views } = useSession();
+  const { deployment, state, views, templates } = useSession();
 
   if (status !== "connected" || locked) {
     return <Elsewhere text="Connect a wallet and unlock this browser's store to see this bounty." action="Get set up" href={href({ name: "setup" })} />;
+  }
+  // A factor or signed-record bounty: same route, the template's own contract.
+  const slot = Object.values(templates).find((t) => t.address === route.address);
+  if (slot) {
+    if (!slot.state) return <Loading what="Reading the board from the indexer" error={slot.joinError} />;
+    const v = slot.views.find((x) => x.idHex === route.id);
+    if (!v) return <Elsewhere text="There's no bounty with this ID on this board." action="Back to the board" href={href({ name: "board" })} />;
+    return <TemplateBounty slot={slot} v={v} />;
   }
   if (deployment.address !== route.address) {
     return (
