@@ -418,8 +418,8 @@ flowchart TD
 The app (`app/`) has the board (both kinds, all four templates), setup, choosing the kind, posting
 with every template, the bounty page for solver and poster, the reviewed-work page for every role
 (apply with an application code, claim, submit, review, collect, refund, overturn, reopen), My
-bounties, an issuer page that signs records into files, key backup and restore, and read-only browsing with no wallet (on networks with a public indexer). Still to build: profiles beyond what
-an application carries, messages and the activity feed ([app/README.md](app/README.md)).
+bounties, an issuer page that signs records into files, key backup and restore, read-only browsing with no wallet (on networks with a public indexer), and the activity feed (Q14).
+Still to build: profiles beyond what an application carries, and messages ([app/README.md](app/README.md)).
 
 | Screen | Data source | Midnight piece |
 |---|---|---|

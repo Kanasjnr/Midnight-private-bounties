@@ -87,6 +87,12 @@ and pass on retry).
   connect. Preprod and Mainnet indexers need a Blockfrost key, so there the
   wallet's indexer is still needed. The board card copies a link
   (`#/board/<network>/<code>`) that opens the board for anyone.
+- **Recent activity** on the board, from the indexer's history of each
+  contract (spike Q14, `src/midnight/activity.ts`): the last 15 actions per
+  contract, each state decoded and compared with the one before to name the
+  bounty it touched. It shows only what's public (titles, rewards, statuses),
+  never who acted, and refreshes every 30 seconds. A state from an older
+  contract version ends that contract's history there.
 - **Local proving by default** (spike Q10), as in `../ui`. Wallet proving is
   one click away in setup, with the warning shown wherever it applies.
 - **No effects.** Anything from outside React (the clock, the URL, browser
@@ -99,8 +105,7 @@ and pass on retry).
 
 ## Not yet
 
-Contributor profiles beyond what an application includes (and verified GitHub), messages, the inbox, the activity
-feed from the indexer (Q14) and light mode. Its store is separate from `../ui`'s: a different port is a
+Contributor profiles beyond what an application includes (and verified GitHub), messages, the inbox and light mode. Its store is separate from `../ui`'s: a different port is a
 different origin, so keys made on one page don't show on the other.
 
 ## Run
