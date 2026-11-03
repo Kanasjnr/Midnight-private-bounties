@@ -99,6 +99,14 @@ export pure circuit decrypt(d: Delivery, b: Field, id: Bytes<32>): Vector<4, Fie
   return Cipher_decrypt4(d.c, Ecdh_sharedKey(b, d.ephemeralPk, context), context);
 }
 
+// Off chain only: the key an application code is encrypted under (the app
+// derives an AES-GCM key from it). The applicant uses (e, posterPk) and sends
+// e·G with the code; the poster uses (b, e·G). Its context is bound to the
+// bounty and to "application", so it never equals a submission's key.
+export pure circuit applicationKey(sk: Field, pk: JubjubPoint, id: Bytes<32>): Field {
+  return Ecdh_sharedKey(sk, pk, transientHash<Vector<2, Field>>(["pb:application" as Field, degradeToTransient(id)]));
+}
+
 // A bounty's ID from the poster's salt and secret key (second audit, L3).
 export pure circuit bountyIdFor(salt: Bytes<32>, sk: Bytes<32>): Bytes<32> {
   return Pseudonym_bountyId(salt, sk);
