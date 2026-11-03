@@ -415,8 +415,11 @@ flowchart TD
 
 ### Screens
 
-The app (`app/`) has the board, setup, post (preimage), bounty detail for solver and poster, and
-My bounties so far; the rest of the table is still to build ([app/README.md](app/README.md)).
+The app (`app/`) has the board (both kinds), setup, choosing the kind, posting a preimage bounty
+or reviewed work, the bounty page for solver and poster, the reviewed-work page for every role
+(apply with an application code, claim, submit, review, collect, refund, overturn, reopen), and
+My bounties. Still to build: the factor and signed-record forms, profiles beyond what an
+application carries, messages and the activity feed ([app/README.md](app/README.md)).
 
 | Screen | Data source | Midnight piece |
 |---|---|---|
