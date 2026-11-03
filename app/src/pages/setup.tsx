@@ -418,6 +418,13 @@ function BoardStep() {
           </Button>
         </div>
       </div>
+      <span className="border-t border-line-soft pt-4 text-muted">
+        Used this board in another browser?{" "}
+        <a href={href({ name: "backup" })} className="font-semibold text-fg">
+          Restore your backup
+        </a>{" "}
+        instead, so your keys come with you.
+      </span>
       {deployment.error && <p className="m-0 text-sm break-words text-bad">{deployment.error}</p>}
     </div>
   );

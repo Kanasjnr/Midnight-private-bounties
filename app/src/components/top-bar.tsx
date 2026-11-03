@@ -106,6 +106,7 @@ function Balances() {
 
 function Account() {
   const { shieldedAddress, wallets, selectedWalletKey, disconnect } = useWallet();
+  const { backup } = useSession();
   const [open, setOpen] = useState(false);
   const name = wallets.find((w) => w.key === selectedWalletKey)?.name ?? "Wallet";
 
@@ -122,6 +123,8 @@ function Account() {
           {name.slice(0, 2).toUpperCase()}
         </span>
         {name}
+        {backup.needed && <Dot tone="warn" />}
+        <span className="sr-only">{backup.needed ? " (keys not backed up)" : ""}</span>
         <ChevronDown aria-hidden="true" className="size-3.5" />
       </button>
       {open && (
@@ -136,6 +139,10 @@ function Account() {
           </div>
           <a role="menuitem" href={href({ name: "setup" })} onClick={() => setOpen(false)} className="rounded-md px-2 py-1.5 text-sm text-fg no-underline hover:bg-chip">
             Setup and proving
+          </a>
+          <a role="menuitem" href={href({ name: "backup" })} onClick={() => setOpen(false)} className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm text-fg no-underline hover:bg-chip">
+            Keys and backup
+            {backup.needed && <span className="text-xs text-warn">Not backed up</span>}
           </a>
           <Button
             role="menuitem"

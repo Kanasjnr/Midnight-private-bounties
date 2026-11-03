@@ -51,6 +51,7 @@ import {
   type TemplateView,
 } from "~/midnight/verified-api";
 import { answerItem, templateItem, workItem, type BoardItem } from "~/lib/items";
+import type { BoardAddresses } from "~/midnight/backup";
 import { instrument, useTx } from "~/tx";
 
 const TOKEN_KEY_PREFIX = "private-bounties-app:token-address:";
@@ -93,6 +94,18 @@ export interface Session {
   templates: Record<Template, TemplateSession>;
   /** Every bounty of both kinds, as board rows. */
   items: BoardItem[];
+  /** The joined board's contracts, or null before joining. */
+  board: BoardAddresses | null;
+  backup: BackupStatus;
+}
+
+export interface BackupStatus {
+  /** True when a joined contract's keys aren't in a backup made in this browser. */
+  needed: boolean;
+  /** When the last backup was made here (ISO), if ever. */
+  at: string | null;
+  /** Record that these contracts' keys are now backed up. */
+  mark: (addresses: string[]) => void;
 }
 
 export interface WorkSession extends Omit<Slot<WorkContract, WorkLedger, WorkView>, "providers"> {
@@ -274,6 +287,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [views, address, now, read.set, solvedHere.set, workSlot.views, workSlot.state, workSlot.address, factorSlot.views, factorSlot.address, signedSlot.views, signedSlot.address],
   );
 
+  const joined: BoardAddresses | null =
+    address && contract
+      ? {
+          verified: address,
+          work: workSlot.contract ? workSlot.address : null,
+          factor: factorSlot.contract ? factorSlot.address : null,
+          signed: signedSlot.contract ? signedSlot.address : null,
+        }
+      : null;
+  const backedUp = useLocalSet(`private-bounties-app:backed-up:${networkId ?? "unknown"}`);
+  const [backedUpAt, setBackedUpAt] = useLocalValue(`private-bounties-app:backed-up-at:${networkId ?? "unknown"}`);
+  const backup: BackupStatus = {
+    needed: joined !== null && [joined.verified, joined.work, joined.factor, joined.signed].some((a) => a !== null && !backedUp.set.has(a)),
+    at: backedUpAt,
+    mark: (addresses) => {
+      backedUp.addAll(addresses);
+      setBackedUpAt(new Date().toISOString());
+    },
+  };
+
   const value: Session = {
     deployment,
     state,
@@ -297,6 +330,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     work,
     templates,
     items,
+    board: joined,
+    backup,
   };
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
