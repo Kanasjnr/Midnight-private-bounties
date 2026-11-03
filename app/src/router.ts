@@ -9,6 +9,8 @@ export type Route =
   | { name: "setup" }
   | { name: "issue" }
   | { name: "backup" }
+  /** A shared board link: the network and the board code. */
+  | { name: "open-board"; network: string; code: string }
   | { name: "post" }
   | { name: "post-answer" }
   | { name: "post-work" }
@@ -25,6 +27,7 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === "setup") return { name: "setup" };
   if (parts[0] === "issue") return { name: "issue" };
   if (parts[0] === "backup") return { name: "backup" };
+  if (parts[0] === "board" && parts.length === 3 && /^[a-z]+$/.test(parts[1]!)) return { name: "open-board", network: parts[1]!, code: parts[2]!.toLowerCase() };
   if (parts[0] === "post") return parts[1] === "answer" ? { name: "post-answer" } : parts[1] === "work" ? { name: "post-work" } : { name: "post" };
   if ((parts[0] === "b" || parts[0] === "w") && parts.length === 3) {
     const [, address, id] = parts.map((p) => p.toLowerCase());
@@ -45,6 +48,8 @@ export function href(route: Route): string {
       return "#/post/answer";
     case "post-work":
       return "#/post/work";
+    case "open-board":
+      return `#/board/${route.network}/${route.code}`;
     default:
       return `#/${route.name}`;
   }

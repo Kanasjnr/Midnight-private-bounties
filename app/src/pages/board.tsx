@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { workCircuits } from "~/midnight/work-api";
 import { useWallet } from "@/hooks/use-wallet";
+import { NETWORK_IDS } from "@/providers/wallet-context";
 import { useMidnightProviders } from "@/providers/midnight-providers";
 import { duplicates } from "~/lib/board";
 import { filterItems, itemTotals, type Kind, type Need } from "~/lib/items";
@@ -12,16 +13,51 @@ import { useSession } from "~/session";
 import { useProofServer } from "~/hooks/use-proof-server";
 import { BountyTable } from "~/components/bounty-table";
 import { networkName } from "~/components/top-bar";
-import { Amount, CopyButton, cx, Dot, LinkButton, Panel } from "~/components/ui";
+import { Amount, Button, CopyButton, cx, Dot, LinkButton, Panel } from "~/components/ui";
+import { useCanAct } from "~/components/wallet-gate";
+import { canBrowse } from "~/midnight/read-only";
+import { parseBoardCode } from "~/pages/setup";
 
 export function BoardPage() {
   const { status } = useWallet();
-  const { locked } = useMidnightProviders();
-  const { deployment, state } = useSession();
+  const { deployment, state, boardAddress, browsing, network } = useSession();
 
-  if (status !== "connected" || locked || !deployment.address) return <Welcome />;
+  // With no wallet, a board can still be read where the network has a public indexer.
+  if (!boardAddress || (browsing && status !== "connected" && !canBrowse(network))) return <Welcome />;
   if (!state) return <Loading what={deployment.error ? null : "Reading the board from the indexer"} error={deployment.error} />;
-  return <Board key={deployment.address} address={deployment.address} />;
+  return <Board key={boardAddress} address={boardAddress} />;
+}
+
+/** A shared board link (`#/board/<network>/<code>`): opens the board, read-only until a wallet joins it. */
+export function OpenBoardPage({ route }: { route: Extract<Route, { name: "open-board" }> }) {
+  const { status, setRequestedNetworkId } = useWallet();
+  const { network, boardAddress, openBoard, deployment } = useSession();
+  const code = parseBoardCode(route.code);
+  if (!code || !(NETWORK_IDS as readonly string[]).includes(route.network)) return <Loading what={null} error="That board link is broken. Ask whoever shared it for the board code." />;
+  if (boardAddress === code.verified && network === route.network) return <BoardPage />;
+  const elsewhere = route.network !== network;
+  return (
+    <div className="flex flex-col items-start gap-4 py-16">
+      <h1 className="m-0 text-3xl font-semibold tracking-tight">Open this board?</h1>
+      <p className="m-0 max-w-[560px] text-muted">
+        Board <span className="font-mono text-fg-2">{short(code.verified, 10, 8)}</span> on {networkName(route.network)}.
+        {boardAddress && !elsewhere ? " It replaces the board you have open now." : ""}
+        {elsewhere && status === "connected" ? ` Your wallet is on ${networkName(network)}: switch it to ${networkName(route.network)} and reconnect to open it.` : ""}
+      </p>
+      {/* Switching the network first: each network keeps its own board addresses. */}
+      {elsewhere ? (
+        status !== "connected" && (
+          <Button size="lg" onClick={() => setRequestedNetworkId(route.network as Parameters<typeof setRequestedNetworkId>[0])}>
+            Switch to {networkName(route.network)}
+          </Button>
+        )
+      ) : (
+        <Button size="lg" busy={deployment.busy === "joining"} onClick={() => openBoard(code)}>
+          Open the board
+        </Button>
+      )}
+    </div>
+  );
 }
 
 const NEED_TEXT: Record<Need, [string, string]> = {
@@ -32,8 +68,23 @@ const NEED_TEXT: Record<Need, [string, string]> = {
   collect: ["a reward to collect", "rewards to collect"],
 };
 
+function BrowsingNote() {
+  const { status } = useWallet();
+  const { locked } = useMidnightProviders();
+  const what = status !== "connected" ? "Connect a wallet" : locked ? "Unlock this browser's store" : "Join this board";
+  return (
+    <Panel className="flex flex-wrap items-center justify-between gap-4 px-4.5 py-3.5">
+      <span className="text-muted">You're browsing. {what} to post, solve or apply.</span>
+      <LinkButton href={href({ name: "setup" })} variant="ghost">
+        {what}
+      </LinkButton>
+    </Panel>
+  );
+}
+
 function Board({ address }: { address: string }) {
   const { items, now, hidden, work } = useSession();
+  const canAct = useCanAct();
   const { networkId } = useWallet();
   const [kind, setKind] = useState<Kind | "all">("all");
   const [phase, setPhase] = useState<"active" | "done">("active");
@@ -70,6 +121,8 @@ function Board({ address }: { address: string }) {
           <Stat label="Paid out" value={<Amount value={amount(t.paidOut)} />} border />
         </dl>
       </header>
+
+      {!canAct && <BrowsingNote />}
 
       {needs.length > 0 && (
         <Panel tone="navy" className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4.5 py-3.5">
@@ -272,8 +325,9 @@ export function boardCode(verified: string, work: string | null, factor: string 
 }
 
 function BoardCard({ address }: { address: string }) {
-  const { work, templates } = useSession();
+  const { work, templates, network } = useSession();
   const code = boardCode(address, work.address, templates.factor.address, templates.signed.address);
+  const link = `${window.location.origin}${window.location.pathname}${href({ name: "open-board", network, code })}`;
   const arbiter = work.ps ? toHex(workCircuits.arbiterId(work.ps.sk)) : null;
   return (
     <section aria-labelledby="board-title" className="flex flex-col gap-2 rounded-lg border border-line p-4">
@@ -284,8 +338,9 @@ function BoardCard({ address }: { address: string }) {
         {short(code, 10, 8)}
         <CopyButton text={code} label="Copy the board code" />
       </span>
-      <span className="text-[13px] text-muted">
-        Every contract of the board in one code. Share it so others can join.
+      <span className="flex items-center gap-1 text-[13px] text-muted">
+        Or share a link anyone can open, even without a wallet
+        <CopyButton text={link} label="Copy the board link" />
       </span>
       {arbiter && (
         <span className="flex items-center gap-1 text-[13px] text-muted">

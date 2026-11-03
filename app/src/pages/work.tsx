@@ -6,7 +6,6 @@
 import { useState, type ReactNode } from "react";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { useWallet } from "@/hooks/use-wallet";
-import { useMidnightProviders } from "@/providers/midnight-providers";
 import { amount, dateTime, short, span } from "~/lib/format";
 import { workStatus } from "~/lib/items";
 import { cleanDetails, cleanTitle, hadHiddenCharacters } from "~/lib/sanitize";
@@ -37,18 +36,19 @@ import { useSession } from "~/session";
 import { Countdown } from "~/components/countdown";
 import { Loading } from "~/pages/board";
 import { Amount, Button, Chip, CopyButton, Facts, Field, Input, LinkButton, Panel, StatusText, Textarea, Visibility } from "~/components/ui";
+import { WalletGate } from "~/components/wallet-gate";
+import { canBrowse } from "~/midnight/read-only";
 
 export function WorkPage({ route }: { route: Extract<Route, { name: "work" }> }) {
   const { status } = useWallet();
-  const { locked } = useMidnightProviders();
-  const { work } = useSession();
+  const { work, network, browsing } = useSession();
 
-  if (status !== "connected" || locked) return <Note text="Connect a wallet and unlock this browser's store to see this work." action="Get set up" to={href({ name: "setup" })} />;
+  if (status !== "connected" && !canBrowse(network)) return <Note text="Connect a wallet to see this work." action="Get set up" to={href({ name: "setup" })} />;
   if (work.address !== route.address) {
     return (
       <div className="flex flex-col items-start gap-4 py-16">
         <p className="m-0 text-lg text-muted">This work is on another board's reviewed-work contract, {short(route.address, 10, 8)}.</p>
-        <Button onClick={() => work.setAddress(route.address)}>Join that contract</Button>
+        <Button onClick={() => work.setAddress(route.address)}>{browsing && status !== "connected" ? "Open that contract" : "Join that contract"}</Button>
       </div>
     );
   }
@@ -221,6 +221,7 @@ function VisitorActions({ v }: { v: WorkView }) {
   if (v.terms.firstToClaim) {
     const e = workActionError("claim", state, v, now);
     return (
+      <WalletGate doing="claim it">
       <Section title="Claim it">
         <p className="m-0 text-muted">
           Claiming gives you {span(v.terms.deliveryWindow)} to deliver, and nobody else can take it meanwhile. The poster can release
@@ -231,9 +232,14 @@ function VisitorActions({ v }: { v: WorkView }) {
           {e && <span className="text-sm text-muted">{e}</span>}
         </div>
       </Section>
+      </WalletGate>
     );
   }
-  return <ApplyForm v={v} />;
+  return (
+    <WalletGate doing="apply">
+      <ApplyForm v={v} />
+    </WalletGate>
+  );
 }
 
 function ApplyForm({ v }: { v: WorkView }) {
