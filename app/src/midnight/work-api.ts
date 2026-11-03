@@ -45,7 +45,7 @@ import {
   randomBytes32,
 } from "@/midnight/private-bounties-api";
 
-export { Status as WorkStatus, pureCircuits as workCircuits, type Ledger as WorkLedger, type Terms, type Work };
+export { Status as WorkStatus, pureCircuits as workCircuits, ledger as workLedger, type Ledger as WorkLedger, type Terms, type Work };
 
 /** Where copy-zk.mjs serves this contract's keys and zkir. */
 export const WORK_ZK_ASSETS_PATH = "managed/bounty_reviewed_work";

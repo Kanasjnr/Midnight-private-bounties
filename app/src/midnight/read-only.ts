@@ -15,6 +15,11 @@ const INDEXERS: Record<string, { http: string; ws: string }> = {
   undeployed: { http: "http://127.0.0.1:8088/api/v4/graphql", ws: "ws://127.0.0.1:8088/api/v4/graphql/ws" },
 };
 
+/** The network's public indexer endpoint (GraphQL over HTTP), if it has one. */
+export function publicIndexerUrl(network: string): string | null {
+  return INDEXERS[network]?.http ?? null;
+}
+
 export function canBrowse(network: string): boolean {
   return network in INDEXERS;
 }
