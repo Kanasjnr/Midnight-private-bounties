@@ -20,16 +20,28 @@ The app's own code is under `~/…` (`src/`).
 | `#/` | The board: totals, open and closed bounties, search and sort, what needs you, proving status |
 | `#/setup` | The five-step checklist: wallet, private store, proof server, DUST, board (join by address, or deploy a token and a bounty contract, then mint test tokens) |
 | `#/post` | Choose the kind: reviewed work or a verified answer |
-| `#/post/answer` | Post a preimage bounty: details, then a review of what goes on chain |
+| `#/post/answer` | Post a verified answer: pick the template (preimage, factor or signed record), fill in its checker (the answer, N, or the issuer, record type, field and threshold), then review |
 | `#/post/work` | Post reviewed work: the reward, who works on it (applicants or first to claim), the delivery and review windows, the final deadline, an optional arbiter, then a review |
-| `#/b/<board>/<id>` | One verified-answer bounty. Solvers check their answer as they type, then prove and submit; posters decrypt the answer here, or claim the refund |
+| `#/b/<contract>/<id>` | One verified-answer bounty, of any template. Solvers check their answer (a phrase, two factors, or a signed-record file) in the browser, then prove and submit; posters decrypt what was sent here, or claim the refund |
+| `#/issue` | For issuers: make a signing key, sign records into files for their holders |
 | `#/w/<contract>/<id>` | One piece of reviewed work, by role. Anyone applies (an application code) or claims; the assigned contributor submits a link and collects; the poster reads applications, assigns, releases a claim, decrypts the link, approves or rejects, and takes back an unearned reward; the arbiter overturns a rejection; anyone reopens work whose window ran out |
 | `#/mine` | Posted by you, working on, and paid to you here, with what needs you first |
 
-A board is two contracts paying in the same token: the preimage template
-and the reviewed-work template. Its code is the first one's address, a dot,
-and the second's. Setup joins both from the code, or deploys the second one
-next to the first.
+A board is up to four contracts paying in the same token: the preimage,
+reviewed-work, factor and signed-record templates. Its code is their
+addresses joined by dots in that order, with empty places for ones it doesn't
+have (a single address, or two, still works). Setup joins them all from the
+code, or deploys the missing ones next to the first. Each contract after the
+first lives in a slot (`src/hooks/use-contract-slot.ts`): its providers, join
+and live state, built from stores.
+
+**Signed records.** A record is four numbers: its type, then three fields.
+The type is an app convention: its name, as UTF-8, is the first number, and
+known types name their fields ("Bank statement v1": amount, issued at,
+subject). The contract only checks that the first number matches the
+bounty's. An issuer signs with the same Schnorr signing as
+`contract/signing.ts`, in the browser, and hands the holder a JSON file with
+the record, the issuer's key and the signature.
 
 **Application codes.** In applicant mode, the applicant writes a plan (and,
 if they want, a name and links). The page encrypts it to the poster's key for
@@ -73,8 +85,7 @@ and pass on retry).
 
 ## Not yet
 
-The factor and signed-record templates, contributor profiles beyond what an
-application includes (and verified GitHub), messages, the inbox, the activity
+Contributor profiles beyond what an application includes (and verified GitHub), messages, the inbox, the activity
 feed from the indexer (Q14), key backup, light mode and browsing
 without a wallet. Its store is separate from `../ui`'s: a different port is a
 different origin, so keys made on one page don't show on the other.
@@ -96,7 +107,7 @@ yarn workspace @midnight-ntwrk/example-private-bounties-app dev         # http:/
 | `dev` | copies ZK assets into `public/`, then runs Vite on port 5174 |
 | `build` | copies ZK assets, typechecks, builds to `dist/` |
 | `typecheck` | `tsc -b` |
-| `test:unit` | vitest: the board logic, formatting, text cleaning, routes, the stores, the transaction tracker, and reviewed work against the compiled contract (every pre-check against every circuit, application codes, the submitted link) |
+| `test:unit` | vitest: the board logic, formatting, text cleaning, routes, the stores, the transaction tracker, and every template against its compiled contract: reviewed work (every pre-check against every circuit, application codes, the submitted link), factor and signed record (pre-checks against submit, a record issued in the app passing the signature check, decryption), and board codes |
 
 ## Verification
 
