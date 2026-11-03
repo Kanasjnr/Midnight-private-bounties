@@ -3,8 +3,9 @@
 // poster reads applications, assigns, reviews and takes back an unearned
 // reward; the arbiter can overturn a rejection. Every button is gated by
 // workActionError, which mirrors the circuit's asserts.
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
+import { generateSecretKey } from "nostr-tools/pure";
 import { useWallet } from "@/hooks/use-wallet";
 import { amount, dateTime, short, span } from "~/lib/format";
 import { workStatus } from "~/lib/items";
@@ -12,6 +13,7 @@ import { cleanDetails, cleanTitle, hadHiddenCharacters } from "~/lib/sanitize";
 import {
   approve,
   assign,
+  checkedPosterKey,
   claim,
   collect,
   contributorPseudonym,
@@ -27,7 +29,7 @@ import {
   submitWork,
   workActionError,
   WorkStatus,
-  type Application,
+  type OpenedApplication,
   type WorkAction,
   type WorkView,
 } from "~/midnight/work-api";
@@ -38,6 +40,11 @@ import { Loading } from "~/pages/board";
 import { Amount, Button, Chip, CopyButton, Facts, Field, Input, LinkButton, Panel, StatusText, Textarea, Visibility } from "~/components/ui";
 import { WalletGate } from "~/components/wallet-gate";
 import { canBrowse } from "~/midnight/read-only";
+import { ChatBox, useChannel, useInbox, type Inbound } from "~/components/chat";
+import { applicationEvent, contactKey, inboxTag } from "~/midnight/chat";
+import { send } from "~/lib/relays";
+import { useLocalSet } from "~/hooks/use-local-value";
+import { constantStore, promiseStore, useStore } from "~/lib/store";
 
 export function WorkPage({ route }: { route: Extract<Route, { name: "work" }> }) {
   const { status } = useWallet();
@@ -243,77 +250,153 @@ function VisitorActions({ v }: { v: WorkView }) {
 }
 
 function ApplyForm({ v }: { v: WorkView }) {
-  const { work } = useSession();
+  const { work, network } = useSession();
+  const applied = useLocalSet(`private-bounties-app:applied:${network}`);
   const [plan, setPlan] = useState("");
   const [name, setName] = useState("");
   const [links, setLinks] = useState("");
   const [code, setCode] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  const [again, setAgain] = useState(false);
   const ps = work.ps;
   const tooLong = [...plan].length > PLAN_MAX;
+  const mark = `${work.address}:${v.idHex}`;
+  const sent = applied.set.has(mark) && !again;
 
-  const make = async () => {
+  const apply = async () => {
     setFailed(null);
     if (!ps || !work.address || !work.state) return;
+    setBusy(true);
     try {
       const pseudonym = contributorPseudonym(work.address, v.id, ps.sk);
       const posterPk = work.state.works.lookup(v.id).posterPk;
-      setCode(await makeApplication(v, posterPk, { pseudonym, plan, name, links: links.split(/[\n,]/) }));
+      const made = await makeApplication(v, posterPk, { pseudonym, plan, name, links: links.split(/[\n,]/) }, await contactKey(ps.sk, work.address, v.id));
+      setCode(made);
+      await send(applicationEvent(await inboxTag(work.address, v.id), made, generateSecretKey()));
+      applied.add(mark);
+      setAgain(false);
     } catch (err: unknown) {
       setFailed(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
     }
   };
+
+  if (sent) {
+    return (
+      <Section title="You applied">
+        <p className="m-0 text-muted">
+          The poster sees your application on their page. If they pick you, this page shows it as yours to deliver. Talk to them
+          here meanwhile: only the two of you can read it.
+        </p>
+        <PosterChat v={v} />
+        <div className="flex flex-wrap items-center gap-4">
+          <Button variant="quiet" onClick={() => setAgain(true)}>
+            Send a new application
+          </Button>
+          {code && (
+            <span className="flex items-center gap-1 text-sm text-muted">
+              Or send it yourself as a code
+              <CopyButton text={code} label="Copy application code" />
+            </span>
+          )}
+        </div>
+      </Section>
+    );
+  }
 
   return (
     <Section title="Apply">
       <p className="m-0 text-muted">
-        The poster picks who works on it. Write your plan here: the page turns it into a code only the poster can read, which you send
-        them however the description says. If they pick you, it shows up here as yours to deliver.
+        The poster picks who works on it. Your application goes straight to them, encrypted so only they can read it, and opens a
+        private chat with them. If they pick you, it shows up here as yours to deliver.
       </p>
-      {code ? (
-        <Panel tone="navy" className="flex flex-col gap-3 px-5 py-4">
-          <span className="text-[13px] text-private">Your application code. Anyone can see it, but only the poster can read it.</span>
-          <code className="font-mono text-[12px] break-all text-fg-2">{code}</code>
-          <div className="flex items-center gap-3">
-            <CopyButton text={code} label="Copy application code" />
-            <Button variant="quiet" onClick={() => setCode(null)}>
-              Edit the application
-            </Button>
-          </div>
-        </Panel>
-      ) : (
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (plan.trim() && !tooLong) void make();
-          }}
-        >
-          <Field id="plan" label="Your plan" aside={`${[...plan].length}/${PLAN_MAX}`}>
-            <Textarea id="plan" rows={4} value={plan} onChange={(e) => setPlan(e.target.value)} placeholder="How you'd do it, and roughly when." />
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (plan.trim() && !tooLong) void apply();
+        }}
+      >
+        <Field id="plan" label="Your plan" aside={`${[...plan].length}/${PLAN_MAX}`}>
+          <Textarea id="plan" rows={4} value={plan} onChange={(e) => setPlan(e.target.value)} placeholder="How you'd do it, and roughly when." />
+        </Field>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
+          <Field id="name" label="Name (optional)">
+            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="How the poster should know you" />
           </Field>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
-            <Field id="name" label="Name (optional)">
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="How the poster should know you" />
-            </Field>
-            <Field id="links" label="Links (optional)">
-              <Input id="links" value={links} onChange={(e) => setLinks(e.target.value)} placeholder="GitHub, Discord, portfolio; comma-separated" />
-            </Field>
-          </div>
-          <span className="text-[13px] text-muted">Only the poster sees your name and links, and only if you include them. Nothing about your application goes on chain.</span>
-          <div>
-            <Button type="submit" size="lg" disabled={!plan.trim() || tooLong || !ps}>
-              Make my application code
+          <Field id="links" label="Links (optional)">
+            <Input id="links" value={links} onChange={(e) => setLinks(e.target.value)} placeholder="GitHub, Discord, portfolio; comma-separated" />
+          </Field>
+        </div>
+        <span className="text-[13px] text-muted">
+          Only the poster sees your name and links, and only if you include them. Nothing about your application goes on chain.
+        </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" size="lg" disabled={!plan.trim() || tooLong || !ps} busy={busy}>
+            Send my application
+          </Button>
+          {again && (
+            <Button variant="quiet" onClick={() => setAgain(false)}>
+              Cancel
             </Button>
+          )}
+        </div>
+        {failed && (
+          <div className="flex flex-col gap-2">
+            <p className="m-0 text-sm text-bad">{failed}</p>
+            {code && (
+              <span className="flex items-center gap-1 text-sm text-muted">
+                You can still send it yourself as a code
+                <CopyButton text={code} label="Copy application code" />
+              </span>
+            )}
           </div>
-          {failed && <p className="m-0 text-sm text-bad">{failed}</p>}
-        </form>
-      )}
+        )}
+      </form>
     </Section>
   );
 }
 
+/** The applicant's or contributor's chat with the poster. In first-to-claim work, the first message also introduces them. */
+function PosterChat({ v, introduce = false }: { v: WorkView; introduce?: boolean }) {
+  const { work, network } = useSession();
+  const introduced = useLocalSet(`private-bounties-app:introduced:${network}`);
+  const ps = work.ps;
+  const address = work.address;
+  const mine = useStore(
+    useMemo(() => (ps && address ? promiseStore(() => contactKey(ps.sk, address, v.id)) : constantStore<bigint | null>(null)), [ps, address, v.idHex]),
+  );
+  const posterPk = work.state ? work.state.works.lookup(v.id).posterPk : null;
+  const ch = useChannel(mine, posterPk, v.id);
+  if (!ch) return <span className="text-sm text-faint">Opening the chat…</span>;
+  const mark = `${address}:${v.idHex}`;
+  const intro =
+    introduce && ps && address && posterPk && mine !== null && !introduced.set.has(mark)
+      ? async () => {
+          const pseudonym = contributorPseudonym(address, v.id, ps.sk);
+          const code = await makeApplication(v, posterPk, { pseudonym, plan: "", name: "", links: [] }, mine);
+          await send(applicationEvent(await inboxTag(address, v.id), code, generateSecretKey()));
+          introduced.add(mark);
+        }
+      : undefined;
+  return <ChatBox ch={ch} other="the poster" beforeSend={intro} />;
+}
+
 function ContributorActions({ v }: { v: WorkView }) {
+  return (
+    <>
+      <ContributorSteps v={v} />
+      <Section title="Messages">
+        <p className="m-0 text-muted">With the poster, encrypted so only the two of you can read it.</p>
+        <PosterChat v={v} introduce={v.terms.firstToClaim} />
+      </Section>
+    </>
+  );
+}
+
+function ContributorSteps({ v }: { v: WorkView }) {
   const { work, now, colorHex } = useSession();
   const [link, setLink] = useState("");
   const bytes = new TextEncoder().encode(link.trim()).length;
@@ -372,9 +455,10 @@ function PosterActions({ v }: { v: WorkView }) {
   const contract = work.contract!;
   const canRefund = workActionError("refund", state, v, now) === null;
 
+  const taking = v.status === WorkStatus.OPEN && !v.terms.firstToClaim && workActionError("assign", state, v, now) === null;
   return (
     <>
-      {v.status === WorkStatus.OPEN && !v.terms.firstToClaim && workActionError("assign", state, v, now) === null && <Applications v={v} />}
+      {taking ? <Applications v={v} /> : <PosterMessages v={v} />}
       {v.status === WorkStatus.OPEN && v.terms.firstToClaim && !canRefund && (
         <Section title="Waiting for someone to claim it">
           <p className="m-0 text-muted">The first person to claim it gets {span(v.terms.deliveryWindow)} to deliver.</p>
@@ -439,62 +523,136 @@ function ShareLink({ v }: { v: WorkView }) {
   );
 }
 
-/** The poster pastes application codes, reads them here, and assigns one. */
+/** The poster's key for this bounty, checked against the one it was posted with. */
+function usePosterKey(v: WorkView): bigint | null {
+  const { work } = useSession();
+  const { state, address } = work;
+  const seed = work.ps?.posterSeed;
+  return useStore(
+    useMemo(
+      () => (state && address && seed ? promiseStore(() => checkedPosterKey(state, address, v.id, seed)) : constantStore<bigint | null>(null)),
+      // The bounty's poster key never changes once posted.
+      [address, seed, v.idHex],
+    ),
+  );
+}
+
+function useInboxFor(v: WorkView): Inbound[] | null {
+  const { work } = useSession();
+  const tag = useStore(useMemo(() => (work.address ? promiseStore(() => inboxTag(work.address!, v.id)) : constantStore<string | null>(null)), [work.address, v.idHex]));
+  return useInbox(tag, work.state, work.address, v, work.ps?.posterSeed);
+}
+
+/** Applications arrive here from the relays; a pasted code works too, when relays are down. */
 function Applications({ v }: { v: WorkView }) {
-  const { work, now } = useSession();
+  const { work } = useSession();
+  const inbox = useInboxFor(v);
   const [code, setCode] = useState("");
-  const [app, setApp] = useState<Application | null>(null);
+  const [pasted, setPasted] = useState<OpenedApplication | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
   const open = async () => {
     setFailed(null);
-    setApp(null);
+    setPasted(null);
     if (!work.ps?.posterSeed) {
       setFailed("This browser's store has no key for this contract. Was it posted from another browser or wallet account?");
       return;
     }
     try {
-      setApp(await openApplication(work.state!, work.address!, v, work.ps.posterSeed, code));
+      setPasted(await openApplication(work.state!, work.address!, v, work.ps.posterSeed, code));
     } catch (err: unknown) {
       setFailed(err instanceof Error ? err.message : String(err));
     }
   };
 
+  const all = inbox ?? [];
+  const extra = pasted && !all.some((a) => a.pseudonym.join(",") === pasted.pseudonym.join(",")) ? [{ ...pasted, at: Date.now() }] : [];
+
   return (
     <Section title="Applications">
       <p className="m-0 text-muted">
-        Applicants send you a code. Paste one to read it: it opens only with this browser's key for this bounty. Assigning gives them{" "}
-        {span(v.terms.deliveryWindow)} to deliver.
+        Applications arrive here as people send them, readable only with this browser's key. Assigning gives them {span(v.terms.deliveryWindow)} to deliver.
       </p>
-      <div className="flex flex-wrap gap-2">
-        <Input aria-label="Application code" className="flex-[1_1_320px] font-mono text-[12px]" placeholder="pbapp1.…" value={code} onChange={(e) => setCode(e.target.value)} />
-        <Button size="lg" variant="ghost" disabled={!code.trim()} onClick={() => void open()}>
-          Read it
-        </Button>
-      </div>
-      {failed && <p className="m-0 text-sm text-bad">{failed}</p>}
-      {app && (
-        <Panel tone="navy" className="flex flex-col gap-3 px-5 py-4">
-          <span className="text-[13px] text-private">Decrypted in this browser. Only you can read it.</span>
-          <span className="font-semibold">{cleanTitle(app.name) || "No name given"}</span>
-          {app.links.length > 0 && (
-            <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
-              {app.links.map((l, i) => (
-                <li key={i}>
-                  <SafeLink text={l} />
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="m-0 whitespace-pre-wrap text-fg-2">{cleanDetails(app.plan)}</p>
-          <span className="text-[13px] text-faint">The name and links are what they wrote; nothing here checks them.</span>
-          <div>
-            <Act v={v} a="assign" label="Assign them" call={() => assign(work.contract!, v, app.pseudonym, now)} />
-          </div>
+      {inbox === null ? (
+        <span className="text-sm text-faint">Checking for applications…</span>
+      ) : all.length + extra.length === 0 ? (
+        <Panel className="flex flex-col gap-1 px-5 py-4 text-sm">
+          <span className="font-semibold">No applications yet</span>
+          <span className="text-muted">Share the link below. When someone applies, it shows up here.</span>
         </Panel>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {[...extra, ...all].map((a) => (
+            <Contact key={a.pseudonym.join(",")} v={v} a={a} assignable />
+          ))}
+        </div>
       )}
       <ShareLink v={v} />
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted hover:text-fg">Someone sent you a code instead?</summary>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Input aria-label="Application code" className="flex-[1_1_320px] font-mono text-[12px]" placeholder="pbapp1.…" value={code} onChange={(e) => setCode(e.target.value)} />
+          <Button size="lg" variant="ghost" disabled={!code.trim()} onClick={() => void open()}>
+            Read it
+          </Button>
+        </div>
+        {failed && <p className="m-0 mt-2 text-sm text-bad">{failed}</p>}
+      </details>
     </Section>
+  );
+}
+
+/** After assigning (or a claim): the conversations, with the contributor's first. */
+function PosterMessages({ v }: { v: WorkView }) {
+  const { work } = useSession();
+  const inbox = useInboxFor(v);
+  const assigned = v.status !== WorkStatus.OPEN ? toHex(work.state!.works.lookup(v.id).contributor) : null;
+  const list = [...(inbox ?? [])].sort((a, b) => Number(toHex(b.pseudonym) === assigned) - Number(toHex(a.pseudonym) === assigned));
+  if (inbox === null || list.length === 0) return null;
+  return (
+    <Section title="Messages">
+      {list.map((a) => (
+        <Contact key={a.pseudonym.join(",")} v={v} a={a} assignable={false} contributor={toHex(a.pseudonym) === assigned} />
+      ))}
+    </Section>
+  );
+}
+
+function Contact({ v, a, assignable, contributor = false }: { v: WorkView; a: Inbound; assignable: boolean; contributor?: boolean }) {
+  const { work, now } = useSession();
+  const b = usePosterKey(v);
+  const ch = useChannel(b, a.contact, v.id);
+  const [open, setOpen] = useState(contributor);
+  const intro = v.terms.firstToClaim;
+  return (
+    <Panel tone={contributor ? "navy" : "plain"} className="flex flex-col gap-3 px-5 py-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <span className="font-semibold">
+          {cleanTitle(a.name) || (intro ? "The person who claimed it" : "No name given")}
+          {contributor && <span className="ml-2 text-[13px] font-normal text-private">{intro ? "Working on it" : "Assigned"}</span>}
+        </span>
+        <span className="font-mono text-[12px] text-faint">{short(toHex(a.pseudonym), 6, 4)}</span>
+      </div>
+      {intro && <span className="text-[13px] text-warn">They say they claimed it. The chain can't confirm who claimed, so don't share anything you wouldn't tell the claimer.</span>}
+      {a.links.length > 0 && (
+        <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
+          {a.links.map((l, i) => (
+            <li key={i}>
+              <SafeLink text={l} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {a.plan && <p className="m-0 whitespace-pre-wrap text-fg-2">{cleanDetails(a.plan)}</p>}
+      {!intro && <span className="text-[13px] text-faint">The name and links are what they wrote; nothing here checks them.</span>}
+      <div className="flex flex-wrap items-center gap-3">
+        {assignable && <Act v={v} a="assign" label="Assign them" call={() => assign(work.contract!, v, a.pseudonym, now)} />}
+        <Button variant="ghost" onClick={() => setOpen(!open)}>
+          {open ? "Hide chat" : "Chat"}
+        </Button>
+      </div>
+      {open && (ch ? <ChatBox ch={ch} other={contributor ? "the contributor" : "this applicant"} /> : <span className="text-sm text-faint">Opening the chat…</span>)}
+    </Panel>
   );
 }
 
