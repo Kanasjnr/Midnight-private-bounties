@@ -21,6 +21,7 @@ import type { PrivateBountiesPrivateState } from "@/midnight/contract";
 import { encodeAnswer, freshCoin, newPrivateState, tokenColor } from "@/midnight/private-bounties-api";
 import {
   contributorPseudonym,
+  checkedPosterKey,
   makeApplication,
   openApplication,
   readSubmission,
@@ -34,6 +35,7 @@ import {
   type WorkView,
 } from "~/midnight/work-api";
 import { workItem } from "~/lib/items";
+import { contactKey, openChannel, publicKeyOf } from "~/midnight/chat";
 
 type PS = PrivateBountiesPrivateState;
 
@@ -168,16 +170,21 @@ describe("reviewed work, against the compiled contract", { timeout: 120_000 }, (
     const id = await post(f);
     expectMirrors(f, id);
 
-    // The applicant makes a code; the poster opens it and gets the pseudonym the circuit will store.
+    // The applicant makes a code under their contact key, as the app sends it; the poster opens it
+    // and gets the pseudonym the circuit will store, and the key that opens their chat.
     const asApplicant = view(f, id, f.contributor);
-    const code = await makeApplication(asApplicant, f.board.ledger.works.lookup(id).posterPk, {
-      pseudonym: contributorPseudonym(ADDRESS, id, f.contributor.sk),
-      plan: "Two weeks, one PR.",
-      name: "ada",
-      links: ["https://github.com/ada"],
-    });
+    const posterPk = f.board.ledger.works.lookup(id).posterPk;
+    const c = await contactKey(f.contributor.sk, ADDRESS, id);
+    const code = await makeApplication(
+      asApplicant,
+      posterPk,
+      { pseudonym: contributorPseudonym(ADDRESS, id, f.contributor.sk), plan: "Two weeks, one PR.", name: "ada", links: ["https://github.com/ada"] },
+      c,
+    );
     const app = await openApplication(f.board.ledger, ADDRESS, view(f, id, f.poster), f.poster.posterSeed!, code);
-    expect(app).toMatchObject({ plan: "Two weeks, one PR.", name: "ada", links: ["https://github.com/ada"] });
+    expect(app).toMatchObject({ plan: "Two weeks, one PR.", name: "ada", links: ["https://github.com/ada"], contact: publicKeyOf(c) });
+    const b = await checkedPosterKey(f.board.ledger, ADDRESS, id, f.poster.posterSeed!);
+    expect((await openChannel(b, app.contact, id)).thread).toEqual((await openChannel(c, posterPk, id)).thread);
     expectMirrors(f, id, app.pseudonym);
 
     const asPoster = view(f, id, f.poster);
