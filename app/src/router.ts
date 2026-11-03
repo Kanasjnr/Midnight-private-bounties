@@ -7,6 +7,7 @@ export type Route =
   | { name: "board" }
   | { name: "mine" }
   | { name: "setup" }
+  | { name: "issue" }
   | { name: "post" }
   | { name: "post-answer" }
   | { name: "post-work" }
@@ -21,6 +22,7 @@ export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean);
   if (parts[0] === "mine") return { name: "mine" };
   if (parts[0] === "setup") return { name: "setup" };
+  if (parts[0] === "issue") return { name: "issue" };
   if (parts[0] === "post") return parts[1] === "answer" ? { name: "post-answer" } : parts[1] === "work" ? { name: "post-work" } : { name: "post" };
   if ((parts[0] === "b" || parts[0] === "w") && parts.length === 3) {
     const [, address, id] = parts.map((p) => p.toLowerCase());

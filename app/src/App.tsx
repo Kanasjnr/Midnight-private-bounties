@@ -12,6 +12,7 @@ import { PostPage } from "~/pages/post";
 import { PostStart, PostWorkPage } from "~/pages/post-work";
 import { WorkPage } from "~/pages/work";
 import { SetupPage } from "~/pages/setup";
+import { IssuePage } from "~/pages/issue";
 
 export function App() {
   return (
@@ -45,6 +46,8 @@ function Page({ route }: { route: Route }) {
   switch (route.name) {
     case "setup":
       return <SetupPage />;
+    case "issue":
+      return <IssuePage />;
     case "post":
       return <PostStart />;
     case "post-answer":
@@ -77,6 +80,9 @@ function Footer() {
           </a>
           <a className={link} href="https://github.com/Kanasjnr/Midnight-private-bounties/issues" target="_blank" rel="noreferrer">
             Report a problem
+          </a>
+          <a className={link} href="#/issue">
+            Issue signed records
           </a>
           <a className={link} href="https://docs.midnight.network" target="_blank" rel="noreferrer">
             Midnight docs

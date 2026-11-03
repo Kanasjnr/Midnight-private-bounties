@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { combineLatest, defer, map } from "rxjs";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { useDeployment, type Deployment } from "@/hooks/use-deployment";
@@ -23,8 +23,8 @@ import {
 } from "@/midnight/private-bounties-api";
 import { useLocalSet, useLocalValue } from "~/hooks/use-local-value";
 import { useNow } from "~/hooks/use-now";
-import { errorMessage } from "@/lib/errors";
-import { constantStore, observableStore, pollStore, promiseStore, settledStore, useStore, type Poll, type Settled, type Streamed } from "~/lib/store";
+import { constantStore, observableStore, pollStore, promiseStore, useStore, type Poll, type Streamed } from "~/lib/store";
+import { useContractSlot, type Slot, type SlotConfig } from "~/hooks/use-contract-slot";
 import {
   deployWork,
   joinWork,
@@ -32,17 +32,28 @@ import {
   WORK_ZK_ASSETS_PATH,
   work$,
   workViews,
-  type WorkCircuits,
   type WorkContract,
   type WorkLedger,
   type WorkProviders,
   type WorkView,
 } from "~/midnight/work-api";
-import { answerItem, workItem, type BoardItem } from "~/lib/items";
+import {
+  deployTemplate,
+  joinTemplate,
+  readTemplateState,
+  template$,
+  templateViews,
+  TEMPLATES,
+  type Template,
+  type TemplateContract,
+  type TemplateLedger,
+  type TemplateProviders,
+  type TemplateView,
+} from "~/midnight/verified-api";
+import { answerItem, templateItem, workItem, type BoardItem } from "~/lib/items";
 import { instrument, useTx } from "~/tx";
 
 const TOKEN_KEY_PREFIX = "private-bounties-app:token-address:";
-const WORK_KEY_PREFIX = "private-bounties-app:work-address:";
 
 interface DeployInput {
   tokenAddress: string;
@@ -78,26 +89,43 @@ export interface Session {
   mint: (amount: bigint) => Promise<void>;
   /** The board's reviewed-work contract, if it has one. */
   work: WorkSession;
+  /** The board's factor and signed-record contracts, if it has them. */
+  templates: Record<Template, TemplateSession>;
   /** Every bounty of both kinds, as board rows. */
   items: BoardItem[];
 }
 
-export interface WorkSession {
-  address: string | null;
-  /** Remember an address to join (null forgets it). */
-  setAddress: (a: string | null) => void;
+export interface WorkSession extends Omit<Slot<WorkContract, WorkLedger, WorkView>, "providers"> {
   providers: WorkProviders | null;
-  contract: WorkContract | null;
-  joining: boolean;
-  joinError: string | null;
-  retry: () => void;
-  state: WorkLedger | null;
-  stateError: Error | null;
-  ps: PrivateBountiesPrivateState | null;
-  views: WorkView[];
   /** Deploy one that pays in this board's token. */
   deploy: () => Promise<void>;
 }
+
+export interface TemplateSession extends Omit<Slot<TemplateContract, TemplateLedger, TemplateView>, "providers"> {
+  providers: TemplateProviders | null;
+  deploy: () => Promise<void>;
+}
+
+// Module-level, so their identity is stable for the slot's stores.
+const WORK_SLOT: SlotConfig<WorkContract, WorkLedger, WorkView> = {
+  storageKey: "private-bounties-app:work-address:",
+  zk: WORK_ZK_ASSETS_PATH,
+  join: (p, a) => joinWork(p as WorkProviders, a),
+  stream: (p, a) => work$(p as WorkProviders, a),
+  readState: (p, a) => readWorkState(p as WorkProviders, a),
+  views: workViews,
+};
+
+const templateSlot = (t: Template): SlotConfig<TemplateContract, TemplateLedger, TemplateView> => ({
+  storageKey: `private-bounties-app:${t}-address:`,
+  zk: TEMPLATES[t].zk,
+  join: (p, a) => joinTemplate(t, p as TemplateProviders, a),
+  stream: (p, a) => template$(t, p as TemplateProviders, a),
+  readState: (p, a) => readTemplateState(p as TemplateProviders, a),
+  views: (state, a, ps) => templateViews(t, state, a, ps),
+});
+const FACTOR_SLOT = templateSlot("factor");
+const SIGNED_SLOT = templateSlot("signed");
 
 export interface TokenAddress {
   address: string | null;
@@ -111,9 +139,6 @@ interface Board {
 }
 
 const NOTHING = constantStore<Streamed<Board>>({ value: null, error: null });
-const NO_WORK_BOARD = constantStore<Streamed<{ state: WorkLedger; ps: PrivateBountiesPrivateState | null }>>({ value: null, error: null });
-const NO_WORK_PROVIDERS = constantStore<WorkProviders | null>(null);
-const NO_JOIN = constantStore<Settled<WorkContract>>({ value: null, error: null, pending: false });
 const NO_PROVIDERS = constantStore<TokenProviders | null>(null);
 const NO_POLL: Poll<never> = { store: constantStore(null), refresh: () => {} };
 
@@ -212,65 +237,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await run("Minting test tokens", `${n} TEST`, () => mintTestTokens(tokenProviders, a, n));
   };
 
-  // The reviewed-work contract: its own providers bundle, joined from the
-  // remembered address, then streamed like the verified-answer one.
-  const [workAddress, setWorkAddress] = useLocalValue(`${WORK_KEY_PREFIX}${networkId ?? "unknown"}`);
-  const workProvidersStore = useMemo(
-    () => (providersFor ? promiseStore(() => providersFor<WorkCircuits>(WORK_ZK_ASSETS_PATH).then((p) => instrument(p, tx.report))) : NO_WORK_PROVIDERS),
-    [providersFor, tx.report],
-  );
-  const workProviders = useStore(workProvidersStore);
-  const [attempt, setAttempt] = useState(0);
-  const joinStore = useMemo(
-    () => (workProviders && workAddress ? settledStore(() => joinWork(workProviders, workAddress)) : NO_JOIN),
-    // `attempt` makes a new store, which joins again.
-    [workProviders, workAddress, attempt],
-  );
-  const joined = useStore(joinStore);
-  const workContract = joined.value;
-  const workBoardStore = useMemo(
-    () =>
-      workProviders && workAddress && workContract
-        ? observableStore(
-            combineLatest([work$(workProviders, workAddress), defer(() => readWorkState(workProviders, workAddress).catch(() => null))]).pipe(
-              map(([state, ps]) => ({ state, ps })),
-            ),
-          )
-        : NO_WORK_BOARD,
-    [workProviders, workAddress, workContract],
-  );
-  const workBoard = useStore(workBoardStore);
-  const workState = workBoard.value?.state ?? null;
-  const workPs = workBoard.value?.ps ?? null;
-  const workViewList = useMemo(
-    () => (workState && workAddress ? workViews(workState, workAddress, workPs) : []),
-    [workState, workAddress, workPs],
-  );
+  // The board's other contracts, each in its own slot (~/hooks/use-contract-slot).
+  const workSlot = useContractSlot(WORK_SLOT, networkId, tx.report);
+  const factorSlot = useContractSlot(FACTOR_SLOT, networkId, tx.report);
+  const signedSlot = useContractSlot(SIGNED_SLOT, networkId, tx.report);
   const work: WorkSession = {
-    address: workAddress,
-    setAddress: setWorkAddress,
-    providers: workProviders,
-    contract: workContract,
-    joining: joined.pending && workAddress !== null,
-    joinError: joined.error ? errorMessage(joined.error, "Couldn't join the reviewed-work contract") : null,
-    retry: () => setAttempt((n) => n + 1),
-    state: workState,
-    stateError: workBoard.error,
-    ps: workPs,
-    views: workViewList,
+    ...workSlot,
+    providers: workSlot.providers as WorkProviders | null,
     deploy: async () => {
-      if (!workProviders || !state) return;
-      const out = await run("Starting reviewed work", "Reviewed-work contract", () => deployWork(workProviders, state.rewardColor));
-      if (out) setWorkAddress(out.address);
+      const p = workSlot.providers as WorkProviders | null;
+      if (!p || !state) return;
+      const out = await run("Starting reviewed work", "Reviewed-work contract", () => deployWork(p, state.rewardColor));
+      if (out) workSlot.setAddress(out.address);
     },
   };
+  const templateSession = (t: Template, slot: Slot<TemplateContract, TemplateLedger, TemplateView>): TemplateSession => ({
+    ...slot,
+    providers: slot.providers as TemplateProviders | null,
+    deploy: async () => {
+      const p = slot.providers as TemplateProviders | null;
+      if (!p || !state) return;
+      const out = await run(`Adding ${TEMPLATES[t].name.toLowerCase()} bounties`, `${TEMPLATES[t].name} contract`, () => deployTemplate(t, p, state.rewardColor));
+      if (out) slot.setAddress(out.address);
+    },
+  });
+  const templates = { factor: templateSession("factor", factorSlot), signed: templateSession("signed", signedSlot) };
 
   const items = useMemo(
     () => [
       ...(address ? views.map((b) => answerItem(b, address, now, { read: read.set, solvedHere: solvedHere.set })) : []),
-      ...(workAddress && workState ? workViewList.map((w) => workItem(w, workState, workAddress, now)) : []),
+      ...(workSlot.address && workSlot.state ? workSlot.views.map((w) => workItem(w, workSlot.state!, workSlot.address!, now)) : []),
+      ...[factorSlot, signedSlot].flatMap((slot) =>
+        slot.address ? slot.views.map((v) => templateItem(v, slot.address!, now, { read: read.set, solvedHere: solvedHere.set })) : [],
+      ),
     ],
-    [views, workViewList, workState, address, workAddress, now, read.set, solvedHere.set],
+    [views, address, now, read.set, solvedHere.set, workSlot.views, workSlot.state, workSlot.address, factorSlot.views, factorSlot.address, signedSlot.views, signedSlot.address],
   );
 
   const value: Session = {
@@ -294,6 +295,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     deployToken,
     mint,
     work,
+    templates,
     items,
   };
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

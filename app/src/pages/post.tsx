@@ -22,6 +22,7 @@ import { cleanTitle } from "~/lib/sanitize";
 import { go, href } from "~/router";
 import { useSession } from "~/session";
 import { Loading } from "~/pages/board";
+import { TemplatePostForm } from "~/pages/post-template";
 import { Amount, Button, cx, Dot, Field, Input, LinkButton, Panel, Textarea, Visibility } from "~/components/ui";
 
 const PRESETS = [
@@ -60,7 +61,53 @@ export function PostPage() {
     );
   }
   if (!state) return <Loading what="Reading the board from the indexer" error={deployment.error} />;
-  return <PostForm />;
+  return <TemplateChoice />;
+}
+
+const CHOICES = [
+  ["preimage", "Preimage", "Solvers find a word or phrase; only its hash is public"],
+  ["factor", "Factor", "Solvers find two factors of a number you publish"],
+  ["signed", "Signed record", "Solvers hold a record an issuer signed, meeting a threshold"],
+] as const;
+
+/** Which checker: the preimage form below, or a factor or signed-record one. */
+function TemplateChoice() {
+  const { templates } = useSession();
+  const [pick, setPick] = useState<(typeof CHOICES)[number][0]>("preimage");
+  const t = pick === "preimage" ? null : pick;
+  const slot = t === null ? null : templates[t];
+  return (
+    <div className="flex flex-col gap-8">
+      <header className="flex flex-col gap-4">
+        <h1 className="m-0 text-3xl font-semibold tracking-tight">A question with a checked answer</h1>
+        <div role="group" aria-label="Template" className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
+          {CHOICES.map(([k, label, about]) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={pick === k}
+              onClick={() => setPick(k)}
+              className={cx("flex flex-col gap-1 rounded-lg border px-4 py-3 text-left transition-colors", pick === k ? "border-fg bg-raised" : "border-line bg-surface hover:border-line-hover")}
+            >
+              <span className="font-semibold">{label}</span>
+              <span className="text-[13px] text-muted">{about}</span>
+            </button>
+          ))}
+        </div>
+      </header>
+      {slot === null || t === null ? (
+        <PostForm />
+      ) : !slot.address ? (
+        <p className="m-0 text-muted">
+          This board has no {t === "factor" ? "factor" : "signed-record"} contract yet. <a href={href({ name: "setup" })} className="text-link">Add one in setup</a>.
+        </p>
+      ) : !slot.state ? (
+        <Loading what="Reading the contract from the indexer" error={slot.joinError} />
+      ) : (
+        <TemplatePostForm key={t} t={t} />
+      )}
+    </div>
+  );
 }
 
 function PostForm() {
@@ -149,7 +196,6 @@ function PostForm() {
               if (ready) setStep("review");
             }}
           >
-            <h1 className="m-0 text-3xl font-semibold tracking-tight">A question with a checked answer</h1>
             <Field id="title" label="Title" aside={`${[...title.trim()].length}/${TITLE_MAX}`}>
               <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="A short name for the board" />
             </Field>
