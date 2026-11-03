@@ -89,7 +89,7 @@ describe("board", () => {
 describe("router", () => {
   it("round-trips routes", () => {
     const id = "ab".repeat(32);
-    for (const r of [{ name: "board" }, { name: "mine" }, { name: "setup" }, { name: "post" }, { name: "bounty", address: "cd".repeat(32), id }] as const) {
+    for (const r of [{ name: "board" }, { name: "mine" }, { name: "setup" }, { name: "post" }, { name: "backup" }, { name: "bounty", address: "cd".repeat(32), id }, { name: "open-board", network: "preview", code: `${"cd".repeat(32)}..${"ef".repeat(32)}` }] as const) {
       expect(parseRoute(href(r))).toEqual(r);
     }
   });

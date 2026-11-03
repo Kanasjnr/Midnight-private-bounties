@@ -89,7 +89,7 @@ export function Field({ id, label, aside, hint, children }: { id: string; label:
         <label htmlFor={id} className="text-sm font-semibold">
           {label}
         </label>
-        {aside && <span className="font-mono text-xs text-faint">{aside}</span>}
+        {typeof aside === "string" ? <span className="font-mono text-xs text-faint">{aside}</span> : aside}
       </div>
       {children}
       {hint}

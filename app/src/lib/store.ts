@@ -130,3 +130,25 @@ export function pollStore<T>(read: () => Promise<T>, intervalMs: number, key: (v
   });
   return { store, refresh: () => poll?.() };
 }
+
+export interface Settled<T> {
+  value: T | null;
+  error: Error | null;
+  pending: boolean;
+}
+
+/** Like promiseStore, but keeps the error and says while it's running. */
+export function settledStore<T>(run: () => Promise<T>): Store<Settled<T>> {
+  let promise: Promise<T> | null = null;
+  return externalStore<Settled<T>>({ value: null, error: null, pending: true }, (set) => {
+    let live = true;
+    promise ??= run();
+    promise.then(
+      (value) => live && set({ value, error: null, pending: false }),
+      (err: unknown) => live && set({ value: null, error: err instanceof Error ? err : new Error(String(err)), pending: false }),
+    );
+    return () => {
+      live = false;
+    };
+  });
+}

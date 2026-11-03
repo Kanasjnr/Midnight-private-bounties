@@ -42,7 +42,7 @@ export function useLocalValue(key: string): [string | null, (v: string | null) =
  * "hidden", "answer read" or "solved here". Losing it loses only the mark,
  * never funds or keys, so browser storage is fine for it.
  */
-export function useLocalSet(key: string): { set: ReadonlySet<string>; add: (v: string) => void; remove: (v: string) => void } {
+export function useLocalSet(key: string): { set: ReadonlySet<string>; add: (v: string) => void; addAll: (vs: string[]) => void; remove: (v: string) => void } {
   const [raw, write] = useLocalValue(key);
   const set = useMemo(() => {
     try {
@@ -56,6 +56,7 @@ export function useLocalSet(key: string): { set: ReadonlySet<string>; add: (v: s
     () => ({
       set,
       add: (v: string) => write(JSON.stringify([...new Set([...set, v])])),
+      addAll: (vs: string[]) => write(JSON.stringify([...new Set([...set, ...vs])])),
       remove: (v: string) => write(JSON.stringify([...set].filter((x) => x !== v))),
     }),
     [set, write],

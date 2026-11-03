@@ -5,11 +5,15 @@ import { SessionProvider } from "~/session";
 import { TxProvider } from "~/tx";
 import { TopBar } from "~/components/top-bar";
 import { Tray } from "~/components/tray";
-import { BoardPage } from "~/pages/board";
+import { BoardPage, OpenBoardPage } from "~/pages/board";
 import { BountyPage } from "~/pages/bounty";
 import { MinePage } from "~/pages/mine";
 import { PostPage } from "~/pages/post";
+import { PostStart, PostWorkPage } from "~/pages/post-work";
+import { WorkPage } from "~/pages/work";
 import { SetupPage } from "~/pages/setup";
+import { IssuePage } from "~/pages/issue";
+import { BackupPage } from "~/pages/backup";
 
 export function App() {
   return (
@@ -43,8 +47,20 @@ function Page({ route }: { route: Route }) {
   switch (route.name) {
     case "setup":
       return <SetupPage />;
+    case "issue":
+      return <IssuePage />;
+    case "backup":
+      return <BackupPage />;
+    case "open-board":
+      return <OpenBoardPage route={route} />;
     case "post":
+      return <PostStart />;
+    case "post-answer":
       return <PostPage />;
+    case "post-work":
+      return <PostWorkPage />;
+    case "work":
+      return <WorkPage route={route} />;
     case "mine":
       return <MinePage />;
     case "bounty":
@@ -69,6 +85,9 @@ function Footer() {
           </a>
           <a className={link} href="https://github.com/Kanasjnr/Midnight-private-bounties/issues" target="_blank" rel="noreferrer">
             Report a problem
+          </a>
+          <a className={link} href="#/issue">
+            Issue signed records
           </a>
           <a className={link} href="https://docs.midnight.network" target="_blank" rel="noreferrer">
             Midnight docs

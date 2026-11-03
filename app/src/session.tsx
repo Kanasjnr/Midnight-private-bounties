@@ -24,6 +24,35 @@ import {
 import { useLocalSet, useLocalValue } from "~/hooks/use-local-value";
 import { useNow } from "~/hooks/use-now";
 import { constantStore, observableStore, pollStore, promiseStore, useStore, type Poll, type Streamed } from "~/lib/store";
+import { useContractSlot, type Slot, type SlotConfig } from "~/hooks/use-contract-slot";
+import {
+  deployWork,
+  joinWork,
+  readWorkState,
+  WORK_ZK_ASSETS_PATH,
+  work$,
+  workViews,
+  type WorkContract,
+  type WorkLedger,
+  type WorkProviders,
+  type WorkView,
+} from "~/midnight/work-api";
+import {
+  deployTemplate,
+  joinTemplate,
+  readTemplateState,
+  template$,
+  templateViews,
+  TEMPLATES,
+  type Template,
+  type TemplateContract,
+  type TemplateLedger,
+  type TemplateProviders,
+  type TemplateView,
+} from "~/midnight/verified-api";
+import { answerItem, templateItem, workItem, type BoardItem } from "~/lib/items";
+import { readOnlyIndexer } from "~/midnight/read-only";
+import type { BoardAddresses } from "~/midnight/backup";
 import { instrument, useTx } from "~/tx";
 
 const TOKEN_KEY_PREFIX = "private-bounties-app:token-address:";
@@ -34,6 +63,14 @@ interface DeployInput {
 
 export interface Session {
   deployment: Deployment<PrivateBountiesContract, DeployInput>;
+  /** The network shown: the wallet's, or the one picked in setup before connecting. */
+  network: string;
+  /** The verified-answer contract of the board shown, joined or only browsed. */
+  boardAddress: string | null;
+  /** True when the board is only being read: no wallet, or not joined yet. */
+  browsing: boolean;
+  /** Show a board from its code: joins it when the wallet is ready, else just reads it. */
+  openBoard: (code: { verified: string; work: string | null; factor: string | null; signed: string | null }) => void;
   /** The joined board's public ledger, live from the indexer. */
   state: Ledger | null;
   stateError: Error | null;
@@ -60,7 +97,57 @@ export interface Session {
   run: <T>(label: string, subject: string, fn: () => Promise<T>, opts?: { href?: (r: T) => string }) => Promise<T | null>;
   deployToken: () => Promise<void>;
   mint: (amount: bigint) => Promise<void>;
+  /** The board's reviewed-work contract, if it has one. */
+  work: WorkSession;
+  /** The board's factor and signed-record contracts, if it has them. */
+  templates: Record<Template, TemplateSession>;
+  /** Every bounty of both kinds, as board rows. */
+  items: BoardItem[];
+  /** The joined board's contracts, or null before joining. */
+  board: BoardAddresses | null;
+  backup: BackupStatus;
 }
+
+export interface BackupStatus {
+  /** True when a joined contract's keys aren't in a backup made in this browser. */
+  needed: boolean;
+  /** When the last backup was made here (ISO), if ever. */
+  at: string | null;
+  /** Record that these contracts' keys are now backed up. */
+  mark: (addresses: string[]) => void;
+}
+
+export interface WorkSession extends Omit<Slot<WorkContract, WorkLedger, WorkView>, "providers"> {
+  providers: WorkProviders | null;
+  /** Deploy one that pays in this board's token. */
+  deploy: () => Promise<void>;
+}
+
+export interface TemplateSession extends Omit<Slot<TemplateContract, TemplateLedger, TemplateView>, "providers"> {
+  providers: TemplateProviders | null;
+  deploy: () => Promise<void>;
+}
+
+// Module-level, so their identity is stable for the slot's stores.
+const WORK_SLOT: SlotConfig<WorkContract, WorkLedger, WorkView> = {
+  storageKey: "private-bounties-app:work-address:",
+  zk: WORK_ZK_ASSETS_PATH,
+  join: (p, a) => joinWork(p as WorkProviders, a),
+  stream: (p, a) => work$(p as WorkProviders, a),
+  readState: (p, a) => readWorkState(p as WorkProviders, a),
+  views: workViews,
+};
+
+const templateSlot = (t: Template): SlotConfig<TemplateContract, TemplateLedger, TemplateView> => ({
+  storageKey: `private-bounties-app:${t}-address:`,
+  zk: TEMPLATES[t].zk,
+  join: (p, a) => joinTemplate(t, p as TemplateProviders, a),
+  stream: (p, a) => template$(t, p as TemplateProviders, a),
+  readState: (p, a) => readTemplateState(p as TemplateProviders, a),
+  views: (state, a, ps) => templateViews(t, state, a, ps),
+});
+const FACTOR_SLOT = templateSlot("factor");
+const SIGNED_SLOT = templateSlot("signed");
 
 export interface TokenAddress {
   address: string | null;
@@ -84,7 +171,7 @@ const SessionContext = createContext<Session | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const tx = useTx();
-  const deployment = useDeployment<PrivateBountiesContract, DeployInput>({
+  const raw = useDeployment<PrivateBountiesContract, DeployInput>({
     // Contract handles keep the providers they were made with, so instrument
     // them here: every later call on the handle reports its steps.
     deploy: (providers, { tokenAddress }) =>
@@ -93,7 +180,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       ),
     join: (providers, address) => joinPrivateBounties(instrument(providers, tx.report), address),
   });
-  const { providers, contract, address, networkId } = deployment;
+  const { requestedNetworkId } = useWallet();
+  const network = raw.networkId ?? requestedNetworkId;
+  // useDeployment keeps its address in storage under this key, but reads it only
+  // once it has providers. Reading it here too lets a board be browsed with no wallet.
+  const [savedBoard, setSavedBoard] = useLocalValue(`private-bounties-ui:contract-address:${network}`);
+  const deployment: Deployment<PrivateBountiesContract, DeployInput> = {
+    ...raw,
+    join: async (a) => {
+      await raw.join(a);
+      setSavedBoard(a.trim());
+    },
+    forget: () => {
+      raw.forget();
+      setSavedBoard(null);
+    },
+  };
+  const { providers, contract, networkId } = deployment;
+  const boardAddress = raw.address ?? savedBoard;
+  const address = boardAddress;
+  const browse = providers ? null : readOnlyIndexer(network);
   const token = useTokenAddress(networkId);
   const now = useNow();
 
@@ -108,8 +214,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               map(([state, ps]) => ({ state, ps })),
             ),
           )
-        : NOTHING,
-    [providers, address, contract],
+        : browse && address
+          ? observableStore(ledger$({ publicDataProvider: browse } as Parameters<typeof ledger$>[0], address).pipe(map((state) => ({ state, ps: null }))))
+          : NOTHING,
+    [providers, address, contract, browse],
   );
   const board = useStore(boardStore);
   const state = board.value?.state ?? null;
@@ -143,7 +251,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const canMint = token.address !== null && colorHex !== null && tokenColor(token.address).hex === colorHex;
   const rewardBalance = balances && colorHex ? (balances.shielded[colorHex] ?? 0n) : null;
 
-  const scope = `${networkId ?? "unknown"}:${address ?? "none"}`;
+  const scope = `${network}:${address ?? "none"}`;
   const hidden = useLocalSet(`private-bounties-app:hidden:${scope}`);
   const read = useLocalSet(`private-bounties-app:read:${scope}`);
   const solvedHere = useLocalSet(`private-bounties-app:solved:${scope}`);
@@ -172,8 +280,77 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await run("Minting test tokens", `${n} TEST`, () => mintTestTokens(tokenProviders, a, n));
   };
 
+  // The board's other contracts, each in its own slot (~/hooks/use-contract-slot).
+  const workSlot = useContractSlot(WORK_SLOT, network, tx.report, browse);
+  const factorSlot = useContractSlot(FACTOR_SLOT, network, tx.report, browse);
+  const signedSlot = useContractSlot(SIGNED_SLOT, network, tx.report, browse);
+  const work: WorkSession = {
+    ...workSlot,
+    providers: workSlot.providers as WorkProviders | null,
+    deploy: async () => {
+      const p = workSlot.providers as WorkProviders | null;
+      if (!p || !state) return;
+      const out = await run("Starting reviewed work", "Reviewed-work contract", () => deployWork(p, state.rewardColor));
+      if (out) workSlot.setAddress(out.address);
+    },
+  };
+  const templateSession = (t: Template, slot: Slot<TemplateContract, TemplateLedger, TemplateView>): TemplateSession => ({
+    ...slot,
+    providers: slot.providers as TemplateProviders | null,
+    deploy: async () => {
+      const p = slot.providers as TemplateProviders | null;
+      if (!p || !state) return;
+      const out = await run(`Adding ${TEMPLATES[t].name.toLowerCase()} bounties`, `${TEMPLATES[t].name} contract`, () => deployTemplate(t, p, state.rewardColor));
+      if (out) slot.setAddress(out.address);
+    },
+  });
+  const templates = { factor: templateSession("factor", factorSlot), signed: templateSession("signed", signedSlot) };
+
+  const items = useMemo(
+    () => [
+      ...(address ? views.map((b) => answerItem(b, address, now, { read: read.set, solvedHere: solvedHere.set })) : []),
+      ...(workSlot.address && workSlot.state ? workSlot.views.map((w) => workItem(w, workSlot.state!, workSlot.address!, now)) : []),
+      ...[factorSlot, signedSlot].flatMap((slot) =>
+        slot.address ? slot.views.map((v) => templateItem(v, slot.address!, now, { read: read.set, solvedHere: solvedHere.set })) : [],
+      ),
+    ],
+    [views, address, now, read.set, solvedHere.set, workSlot.views, workSlot.state, workSlot.address, factorSlot.views, factorSlot.address, signedSlot.views, signedSlot.address],
+  );
+
+  const joined: BoardAddresses | null =
+    address && contract
+      ? {
+          verified: address,
+          work: workSlot.contract ? workSlot.address : null,
+          factor: factorSlot.contract ? factorSlot.address : null,
+          signed: signedSlot.contract ? signedSlot.address : null,
+        }
+      : null;
+  const backedUp = useLocalSet(`private-bounties-app:backed-up:${networkId ?? "unknown"}`);
+  const [backedUpAt, setBackedUpAt] = useLocalValue(`private-bounties-app:backed-up-at:${networkId ?? "unknown"}`);
+  const backup: BackupStatus = {
+    needed: joined !== null && [joined.verified, joined.work, joined.factor, joined.signed].some((a) => a !== null && !backedUp.set.has(a)),
+    at: backedUpAt,
+    mark: (addresses) => {
+      backedUp.addAll(addresses);
+      setBackedUpAt(new Date().toISOString());
+    },
+  };
+
+  const openBoard: Session["openBoard"] = (code) => {
+    workSlot.setAddress(code.work);
+    factorSlot.setAddress(code.factor);
+    signedSlot.setAddress(code.signed);
+    if (providers) void deployment.join(code.verified);
+    else setSavedBoard(code.verified);
+  };
+
   const value: Session = {
     deployment,
+    network,
+    boardAddress,
+    browsing: contract === null,
+    openBoard,
     state,
     stateError: board.error,
     ps,
@@ -192,6 +369,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     run,
     deployToken,
     mint,
+    work,
+    templates,
+    items,
+    board: joined,
+    backup,
   };
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

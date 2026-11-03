@@ -20,23 +20,33 @@ import { cleanDetails, cleanTitle, hadHiddenCharacters } from "~/lib/sanitize";
 import { href, type Route } from "~/router";
 import { useSession } from "~/session";
 import { Loading } from "~/pages/board";
+import { TemplateBounty } from "~/pages/template-bounty";
+import { canBrowse } from "~/midnight/read-only";
+import { WalletGate } from "~/components/wallet-gate";
 import { Countdown } from "~/components/countdown";
 import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, LinkButton, Panel, StatusText, Textarea, Visibility } from "~/components/ui";
 
 export function BountyPage({ route }: { route: Extract<Route, { name: "bounty" }> }) {
   const { status } = useWallet();
-  const { locked } = useMidnightProviders();
-  const { deployment, state, views } = useSession();
+  const { deployment, state, views, templates, boardAddress, browsing, network, openBoard } = useSession();
 
-  if (status !== "connected" || locked) {
-    return <Elsewhere text="Connect a wallet and unlock this browser's store to see this bounty." action="Get set up" href={href({ name: "setup" })} />;
+  if (status !== "connected" && !canBrowse(network)) {
+    return <Elsewhere text="Connect a wallet to see this bounty." action="Get set up" href={href({ name: "setup" })} />;
   }
-  if (deployment.address !== route.address) {
+  // A factor or signed-record bounty: same route, the template's own contract.
+  const slot = Object.values(templates).find((t) => t.address === route.address);
+  if (slot) {
+    if (!slot.state) return <Loading what="Reading the board from the indexer" error={slot.joinError} />;
+    const v = slot.views.find((x) => x.idHex === route.id);
+    if (!v) return <Elsewhere text="There's no bounty with this ID on this board." action="Back to the board" href={href({ name: "board" })} />;
+    return <TemplateBounty slot={slot} v={v} />;
+  }
+  if (boardAddress !== route.address) {
     return (
       <Elsewhere
         text={`This bounty is on another board, ${short(route.address, 10, 8)}.`}
-        action="Join that board"
-        onClick={() => void deployment.join(route.address)}
+        action={browsing && status !== "connected" ? "Open that board" : "Join that board"}
+        onClick={() => openBoard({ verified: route.address, work: null, factor: null, signed: null })}
         busy={deployment.busy === "joining"}
         error={deployment.error}
       />
@@ -216,6 +226,7 @@ function SolverView({ b }: { b: BountyView }) {
           {b.status === Status.SOLVED ? "Someone already solved this one." : b.status === Status.REFUNDED ? "The poster took the reward back." : "The deadline has passed, so it can't be solved any more."}
         </Panel>
       ) : (
+        <WalletGate doing="solve it">
         <section aria-labelledby="answer-label" className="flex flex-col gap-3">
           <div className={cx("flex flex-col rounded-lg border bg-surface", err === null ? "border-ok-line" : "border-line")}>
             <label id="answer-label" htmlFor="answer" className="px-4 pt-3 text-sm font-semibold">
@@ -249,6 +260,7 @@ function SolverView({ b }: { b: BountyView }) {
             the fee: the reward is paid in the same transaction.
           </p>
         </section>
+        </WalletGate>
       )}
     </Layout>
   );
