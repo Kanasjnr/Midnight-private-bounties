@@ -230,3 +230,21 @@ jobs:
             ${{ env.PACKAGE }}/devnet-run.log
             ${{ env.PACKAGE }}/logs/
           if-no-files-found: warn
+
+  # One stable check name for branch protection, which requires "Contracts on
+  # devnet". The devnet job runs once per suite, under per-suite names; this
+  # fails unless every suite passed.
+  devnet-result:
+    name: Contracts on devnet
+    needs: [devnet]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check every suite passed
+        env:
+          RUNS: ${{ needs.devnet.result }}
+        run: |
+          echo "devnet=$RUNS"
+          [ "$RUNS" = success ]
