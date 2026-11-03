@@ -183,9 +183,10 @@ describe('reviewed work (in memory)', () => {
 
     it('closes claims once a full delivery window no longer fits before the final deadline', () => {
       const f = setup();
-      const { id } = f.post({ deliveryWindow: 30n, deadline: nowSec() + 20n });
-      expectRejects(() => f.contributor().call('claim', id, nowSec() + 30n), 'Past the final deadline');
-      expectRejects(() => f.contributor().call('claim', id, nowSec() + 20n), 'Window end is too early');
+      const { id, terms } = f.post({ deliveryWindow: 30n, deadline: nowSec() + 20n });
+      // A full window would end past the deadline; ending at the deadline is a window cut short.
+      expectRejects(() => f.contributor().call('claim', id, terms.deadline + 10n), 'Past the final deadline');
+      expectRejects(() => f.contributor().call('claim', id, terms.deadline), 'Window end is too early');
     });
   });
 
@@ -388,7 +389,9 @@ describe('reviewed work (in memory)', () => {
     });
 
     it('collect-by: unreviewed work is the contributor’s to collect first, then the poster’s', async () => {
-      const f = setup({ collect: 4n });
+      // Margins of several seconds, so a slow call on a loaded machine doesn't
+      // land on the wrong side of a window.
+      const f = setup({ collect: 8n });
       const a = f.submitted({ reviewWindow: 3n });
       const b = f.submitted({ reviewWindow: 3n });
       await sleep(4);
@@ -396,10 +399,26 @@ describe('reviewed work (in memory)', () => {
       expectRejects(() => f.poster().call('refund', a.id), 'Still collectable');
       f.contributor().call('collect', a.id, freshCoin(0n));
       expect(f.work(a.id).status).toEqual(Status.PAID);
-      await sleep(4);
+      // Past b's review-by (3 s) plus collect-by (8 s).
+      await sleep(Math.max(0, Number(f.work(b.id).until + 9n - nowSec())));
       expectRejects(() => f.contributor().call('collect', b.id, freshCoin(0n)), 'Past the collect-by time');
       f.poster().call('refund', b.id);
       expect(f.work(b.id).status).toEqual(Status.REFUNDED);
+    });
+  });
+
+  describe('7. application codes', () => {
+    it('gives the applicant and the poster the same key, bound to the bounty', () => {
+      const f = setup();
+      const { id } = f.post();
+      const e = randomScalar();
+      const posterPk = pureCircuits.posterPublicKey(f.posterKey);
+      const applicant = pureCircuits.applicationKey(e, posterPk, id);
+      const poster = pureCircuits.applicationKey(f.posterKey, pureCircuits.posterPublicKey(e), id);
+      expect(poster).toEqual(applicant);
+      // Another bounty, or another ephemeral key, gives another key.
+      expect(pureCircuits.applicationKey(e, posterPk, rand32())).not.toEqual(applicant);
+      expect(pureCircuits.applicationKey(randomScalar(), posterPk, id)).not.toEqual(applicant);
     });
   });
 
