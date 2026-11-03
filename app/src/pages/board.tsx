@@ -1,10 +1,13 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Search } from "lucide-react";
+import { toHex } from "@midnight-ntwrk/midnight-js-utils";
+import { workCircuits } from "~/midnight/work-api";
 import { useWallet } from "@/hooks/use-wallet";
 import { useMidnightProviders } from "@/providers/midnight-providers";
-import { boardRows, duplicates, isActive, totals, yours, type Phase, type Sort } from "~/lib/board";
+import { duplicates } from "~/lib/board";
+import { filterItems, itemTotals, type Kind, type Need } from "~/lib/items";
 import { amount, short } from "~/lib/format";
-import { href } from "~/router";
+import { href, type Route } from "~/router";
 import { useSession } from "~/session";
 import { useProofServer } from "~/hooks/use-proof-server";
 import { BountyTable } from "~/components/bounty-table";
@@ -21,26 +24,35 @@ export function BoardPage() {
   return <Board key={deployment.address} address={deployment.address} />;
 }
 
+const NEED_TEXT: Record<Need, [string, string]> = {
+  read: ["an answer to read", "answers to read"],
+  refund: ["a refund to claim", "refunds to claim"],
+  review: ["a submission to review", "submissions to review"],
+  deliver: ["work to deliver", "pieces of work to deliver"],
+  collect: ["a reward to collect", "rewards to collect"],
+};
+
 function Board({ address }: { address: string }) {
-  const { views, now, hidden, read, solvedHere } = useSession();
+  const { items, now, hidden, work } = useSession();
   const { networkId } = useWallet();
-  const [phase, setPhase] = useState<Phase>("active");
-  const [sort, setSort] = useState<Sort>("newest");
+  const [kind, setKind] = useState<Kind | "all">("all");
+  const [phase, setPhase] = useState<"active" | "done">("active");
+  const [sort, setSort] = useState<"newest" | "reward" | "ending">("newest");
   const [query, setQuery] = useState("");
   const [showHidden, setShowHidden] = useState(false);
 
-  const t = totals(views, now);
-  const you = yours(views, now, solvedHere.set, read.set);
-  const copies = useMemo(() => duplicates(views), [views]);
+  const t = itemTotals(items);
+  const copies = useMemo(() => duplicates(items), [items]);
   const noneHidden = useMemo(() => new Set<string>(), []);
-  const rows = boardRows(views, { phase, query, sort }, now, showHidden ? noneHidden : hidden.set);
-  const hiddenHere = views.filter((b) => hidden.set.has(b.idHex) && isActive(b, now) === (phase === "active")).length;
-  const count = (p: Phase) => views.filter((b) => isActive(b, now) === (p === "active") && !hidden.set.has(b.idHex)).length;
+  const rows = filterItems(items, { kind, phase, query, sort }, showHidden ? noneHidden : hidden.set);
+  const inPhase = items.filter((b) => b.active === (phase === "active") && !hidden.set.has(b.idHex));
+  const hiddenHere = items.filter((b) => hidden.set.has(b.idHex) && b.active === (phase === "active")).length;
+  const count = (k: Kind | "all") => inPhase.filter((b) => k === "all" || b.kind === k).length;
 
-  const needs = [
-    you.answersToRead > 0 && `${you.answersToRead === 1 ? "an answer" : `${you.answersToRead} answers`} to read`,
-    you.refundCount > 0 && `${you.refundCount === 1 ? "a refund" : `${you.refundCount} refunds`} to claim`,
-  ].filter((x): x is string => typeof x === "string");
+  const needCounts = new Map<Need, number>();
+  for (const b of items) if (b.needs) needCounts.set(b.needs, (needCounts.get(b.needs) ?? 0) + 1);
+  const needs = [...needCounts].map(([n, c]) => (c === 1 ? NEED_TEXT[n][0] : `${c} ${NEED_TEXT[n][1]}`));
+  const sumOf = (f: (b: (typeof items)[number]) => boolean) => items.filter(f).reduce((a, b) => a + (b.reward ?? 0n), 0n);
 
   return (
     <div className="flex flex-col gap-8">
@@ -48,8 +60,8 @@ function Board({ address }: { address: string }) {
         <div className="flex max-w-[640px] flex-col gap-2">
           <h1 className="m-0 text-4xl leading-tight font-semibold tracking-tight">Bounties</h1>
           <p className="m-0 text-base text-muted">
-            Questions a zero-knowledge proof can check. Every reward is held by the contract and paid to the solver in the same
-            transaction that proves the answer.
+            Work you can claim and deliver, and questions a proof can check. Every reward is held by the contract and paid out
+            privately.
           </p>
         </div>
         <dl aria-label="Board totals" className="m-0 grid grid-cols-3 rounded-lg border border-line">
@@ -63,8 +75,8 @@ function Board({ address }: { address: string }) {
         <Panel tone="navy" className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4.5 py-3.5">
           <Dot tone="private" />
           <span role="status" className="flex-[1_1_320px]">
-            {needs.length === 1 ? "One thing needs you: " : "Two things need you: "}
-            <strong className="font-semibold">{needs.join(" and ")}</strong>.
+            {needs.length === 1 ? "One thing needs you: " : "A few things need you: "}
+            <strong className="font-semibold">{needs.length === 1 ? needs[0] : `${needs.slice(0, -1).join(", ")} and ${needs[needs.length - 1]}`}</strong>.
           </span>
           <a href={href({ name: "mine" })} className="font-semibold text-link no-underline hover:text-link-hover">
             Open my bounties
@@ -74,19 +86,19 @@ function Board({ address }: { address: string }) {
 
       <div className="flex flex-wrap items-start gap-8">
         <section aria-label="Bounties" className="flex min-w-0 flex-[999_1_660px] flex-col gap-4">
-          <div role="group" aria-label="Phase" className="flex gap-6 border-b border-line">
-            {(["active", "done"] as const).map((p) => (
+          <div role="group" aria-label="Kind" className="flex gap-6 border-b border-line">
+            {([["all", "All"], ["work", "Reviewed work"], ["answer", "Verified answers"]] as const).map(([k, label]) => (
               <button
-                key={p}
+                key={k}
                 type="button"
-                aria-pressed={phase === p}
-                onClick={() => setPhase(p)}
+                aria-pressed={kind === k}
+                onClick={() => setKind(k)}
                 className={cx(
                   "-mb-px inline-flex h-11 items-center gap-1.5 border-b-2 text-[15px] font-semibold transition-colors",
-                  phase === p ? "border-fg text-fg" : "border-transparent text-muted hover:text-fg",
+                  kind === k ? "border-fg text-fg" : "border-transparent text-muted hover:text-fg",
                 )}
               >
-                {p === "active" ? "Open" : "Closed"} <span className="font-mono text-xs text-faint">{count(p)}</span>
+                {label} <span className="font-mono text-xs text-faint">{count(k)}</span>
               </button>
             ))}
           </div>
@@ -97,15 +109,22 @@ function Board({ address }: { address: string }) {
               <span className="sr-only">Search bounties</span>
               <input
                 type="search"
-                placeholder="Search titles and questions"
+                placeholder="Search titles and descriptions"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm text-fg outline-none"
               />
             </label>
             <label className="flex h-9 items-center gap-2 rounded-lg border border-line px-2.5 text-sm text-muted transition-colors hover:border-line-hover">
+              Status
+              <select value={phase} onChange={(e) => setPhase(e.target.value as "active" | "done")} className="border-0 bg-transparent text-fg outline-none">
+                <option value="active">Active</option>
+                <option value="done">Done</option>
+              </select>
+            </label>
+            <label className="flex h-9 items-center gap-2 rounded-lg border border-line px-2.5 text-sm text-muted transition-colors hover:border-line-hover">
               Sort
-              <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="border-0 bg-transparent text-fg outline-none">
+              <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="border-0 bg-transparent text-fg outline-none">
                 <option value="newest">Newest</option>
                 <option value="reward">Highest reward</option>
                 <option value="ending">Ending soon</option>
@@ -115,14 +134,14 @@ function Board({ address }: { address: string }) {
 
           <BountyTable
             rows={rows}
-            address={address}
             now={now}
             copies={copies}
-            empty={query ? "No bounties match that search." : phase === "active" ? "No open bounties right now." : "Nothing closed yet."}
+            empty={query ? "No bounties match that search." : phase === "active" ? "Nothing active right now." : "Nothing finished yet."}
             footer={
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3 text-[13px] text-faint">
                 <span>
                   Showing {rows.length} · read live from the {networkName(networkId)} indexer
+                  {!work.address && " · this board has no reviewed-work contract yet"}
                 </span>
                 {hiddenHere > 0 && (
                   <button type="button" onClick={() => setShowHidden(!showHidden)} className="text-link hover:text-link-hover">
@@ -140,10 +159,11 @@ function Board({ address }: { address: string }) {
               You
             </h2>
             <dl className="m-0 grid grid-cols-[minmax(0,1fr)_auto] border-t border-line-soft text-sm">
-              <SideRow label="Waiting for answers" value={String(you.waiting)} />
-              <SideRow label="Answers to read" value={String(you.answersToRead)} />
-              <SideRow label="Refund ready" value={`${amount(you.refundReady)} TEST`} />
-              <SideRow label="Earned here" value={`${amount(you.earned)} TEST`} last />
+              <SideRow label="Working on" value={String(items.filter((b) => b.needs === "deliver").length)} />
+              <SideRow label="To review" value={String(needCounts.get("review") ?? 0)} />
+              <SideRow label="Answers to read" value={String(needCounts.get("read") ?? 0)} />
+              <SideRow label="Refund ready" value={`${amount(sumOf((b) => b.needs === "refund"))} TEST`} />
+              <SideRow label="Earned here" value={`${amount(sumOf((b) => b.earnedHere))} TEST`} last />
             </dl>
             <a href={href({ name: "mine" })} className="mt-1.5 text-sm font-semibold text-link no-underline hover:text-link-hover">
               My bounties
@@ -154,8 +174,46 @@ function Board({ address }: { address: string }) {
         </aside>
       </div>
 
+      <TwoKinds />
       <WhatTheChainSees />
     </div>
+  );
+}
+
+function TwoKinds() {
+  return (
+    <section aria-labelledby="kinds-title" className="flex flex-col gap-5 border-t border-line pt-10">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1.5">
+          <h2 id="kinds-title" className="m-0 text-2xl font-semibold tracking-tight">
+            Two kinds of bounty
+          </h2>
+          <p className="m-0 text-muted">Pick by who decides the work is done.</p>
+        </div>
+        <a href={href({ name: "post" })} className="font-semibold text-link no-underline hover:text-link-hover">
+          Post a bounty
+        </a>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-4">
+        <KindCard to={{ name: "post-work" }} title="Reviewed work" foot="Building, writing, design, events, community work">
+          Someone claims it or you pick an applicant, they deliver within a window, and you approve before they're paid. If you
+          don't review in time, they're paid anyway.
+        </KindCard>
+        <KindCard to={{ name: "post-answer" }} title="Verified answer" foot="Puzzles, crypto challenges, verified data">
+          A zero-knowledge proof checks the answer and pays the solver in the same transaction. Only you can read the answer.
+        </KindCard>
+      </div>
+    </section>
+  );
+}
+
+export function KindCard({ to, title, foot, children }: { to: Route; title: string; foot: string; children: ReactNode }) {
+  return (
+    <a href={href(to)} className="flex flex-col gap-2.5 rounded-lg border border-line bg-surface p-5.5 text-inherit no-underline transition-colors hover:border-line-hover">
+      <span className="text-[17px] font-semibold">{title}</span>
+      <span className="text-muted">{children}</span>
+      <span className="mt-auto border-t border-line-soft pt-3 text-[13px] text-faint">{foot}</span>
+    </a>
   );
 }
 
@@ -208,17 +266,33 @@ export function ProvingCard() {
   );
 }
 
+/** One string that joins both of a board's contracts: `<verified>` or `<verified>.<reviewed work>`. */
+export function boardCode(verified: string, work: string | null): string {
+  return work ? `${verified}.${work}` : verified;
+}
+
 function BoardCard({ address }: { address: string }) {
+  const { work } = useSession();
+  const code = boardCode(address, work.address);
+  const arbiter = work.ps ? toHex(workCircuits.arbiterId(work.ps.sk)) : null;
   return (
     <section aria-labelledby="board-title" className="flex flex-col gap-2 rounded-lg border border-line p-4">
       <h2 id="board-title" className="m-0 text-[15px] font-semibold">
         This board
       </h2>
       <span className="flex items-center gap-1 font-mono text-[13px] text-fg-2">
-        {short(address, 10, 8)}
-        <CopyButton text={address} label="Copy the board's contract address" />
+        {short(code, 10, 8)}
+        <CopyButton text={code} label="Copy the board code" />
       </span>
-      <span className="text-[13px] text-muted">One bounty contract. Share its address so others can join it.</span>
+      <span className="text-[13px] text-muted">
+        {work.address ? "Both contracts in one code: share it so others can join." : "One contract so far. Share the code so others can join."}
+      </span>
+      {arbiter && (
+        <span className="flex items-center gap-1 text-[13px] text-muted">
+          Your arbiter ID <span className="font-mono text-fg-2">{short(arbiter, 6, 4)}</span>
+          <CopyButton text={arbiter} label="Copy your arbiter ID" />
+        </span>
+      )}
       <a href={href({ name: "setup" })} className="text-sm font-semibold text-link no-underline hover:text-link-hover">
         Change board
       </a>

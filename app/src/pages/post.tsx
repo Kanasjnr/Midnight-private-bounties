@@ -221,8 +221,8 @@ function PostForm() {
             </fieldset>
             <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line pt-5">
               {blocker && (title || details || answer) && <span className="mr-auto text-sm text-warn">{blocker}</span>}
-              <LinkButton href={href({ name: "board" })} variant="ghost" size="lg">
-                Cancel
+              <LinkButton href={href({ name: "post" })} variant="ghost" size="lg">
+                Back
               </LinkButton>
               <Button type="submit" size="lg" disabled={!ready}>
                 Continue

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { combineLatest, defer, map } from "rxjs";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { useDeployment, type Deployment } from "@/hooks/use-deployment";
@@ -23,10 +23,26 @@ import {
 } from "@/midnight/private-bounties-api";
 import { useLocalSet, useLocalValue } from "~/hooks/use-local-value";
 import { useNow } from "~/hooks/use-now";
-import { constantStore, observableStore, pollStore, promiseStore, useStore, type Poll, type Streamed } from "~/lib/store";
+import { errorMessage } from "@/lib/errors";
+import { constantStore, observableStore, pollStore, promiseStore, settledStore, useStore, type Poll, type Settled, type Streamed } from "~/lib/store";
+import {
+  deployWork,
+  joinWork,
+  readWorkState,
+  WORK_ZK_ASSETS_PATH,
+  work$,
+  workViews,
+  type WorkCircuits,
+  type WorkContract,
+  type WorkLedger,
+  type WorkProviders,
+  type WorkView,
+} from "~/midnight/work-api";
+import { answerItem, workItem, type BoardItem } from "~/lib/items";
 import { instrument, useTx } from "~/tx";
 
 const TOKEN_KEY_PREFIX = "private-bounties-app:token-address:";
+const WORK_KEY_PREFIX = "private-bounties-app:work-address:";
 
 interface DeployInput {
   tokenAddress: string;
@@ -60,6 +76,27 @@ export interface Session {
   run: <T>(label: string, subject: string, fn: () => Promise<T>, opts?: { href?: (r: T) => string }) => Promise<T | null>;
   deployToken: () => Promise<void>;
   mint: (amount: bigint) => Promise<void>;
+  /** The board's reviewed-work contract, if it has one. */
+  work: WorkSession;
+  /** Every bounty of both kinds, as board rows. */
+  items: BoardItem[];
+}
+
+export interface WorkSession {
+  address: string | null;
+  /** Remember an address to join (null forgets it). */
+  setAddress: (a: string | null) => void;
+  providers: WorkProviders | null;
+  contract: WorkContract | null;
+  joining: boolean;
+  joinError: string | null;
+  retry: () => void;
+  state: WorkLedger | null;
+  stateError: Error | null;
+  ps: PrivateBountiesPrivateState | null;
+  views: WorkView[];
+  /** Deploy one that pays in this board's token. */
+  deploy: () => Promise<void>;
 }
 
 export interface TokenAddress {
@@ -74,6 +111,9 @@ interface Board {
 }
 
 const NOTHING = constantStore<Streamed<Board>>({ value: null, error: null });
+const NO_WORK_BOARD = constantStore<Streamed<{ state: WorkLedger; ps: PrivateBountiesPrivateState | null }>>({ value: null, error: null });
+const NO_WORK_PROVIDERS = constantStore<WorkProviders | null>(null);
+const NO_JOIN = constantStore<Settled<WorkContract>>({ value: null, error: null, pending: false });
 const NO_PROVIDERS = constantStore<TokenProviders | null>(null);
 const NO_POLL: Poll<never> = { store: constantStore(null), refresh: () => {} };
 
@@ -172,6 +212,67 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await run("Minting test tokens", `${n} TEST`, () => mintTestTokens(tokenProviders, a, n));
   };
 
+  // The reviewed-work contract: its own providers bundle, joined from the
+  // remembered address, then streamed like the verified-answer one.
+  const [workAddress, setWorkAddress] = useLocalValue(`${WORK_KEY_PREFIX}${networkId ?? "unknown"}`);
+  const workProvidersStore = useMemo(
+    () => (providersFor ? promiseStore(() => providersFor<WorkCircuits>(WORK_ZK_ASSETS_PATH).then((p) => instrument(p, tx.report))) : NO_WORK_PROVIDERS),
+    [providersFor, tx.report],
+  );
+  const workProviders = useStore(workProvidersStore);
+  const [attempt, setAttempt] = useState(0);
+  const joinStore = useMemo(
+    () => (workProviders && workAddress ? settledStore(() => joinWork(workProviders, workAddress)) : NO_JOIN),
+    // `attempt` makes a new store, which joins again.
+    [workProviders, workAddress, attempt],
+  );
+  const joined = useStore(joinStore);
+  const workContract = joined.value;
+  const workBoardStore = useMemo(
+    () =>
+      workProviders && workAddress && workContract
+        ? observableStore(
+            combineLatest([work$(workProviders, workAddress), defer(() => readWorkState(workProviders, workAddress).catch(() => null))]).pipe(
+              map(([state, ps]) => ({ state, ps })),
+            ),
+          )
+        : NO_WORK_BOARD,
+    [workProviders, workAddress, workContract],
+  );
+  const workBoard = useStore(workBoardStore);
+  const workState = workBoard.value?.state ?? null;
+  const workPs = workBoard.value?.ps ?? null;
+  const workViewList = useMemo(
+    () => (workState && workAddress ? workViews(workState, workAddress, workPs) : []),
+    [workState, workAddress, workPs],
+  );
+  const work: WorkSession = {
+    address: workAddress,
+    setAddress: setWorkAddress,
+    providers: workProviders,
+    contract: workContract,
+    joining: joined.pending && workAddress !== null,
+    joinError: joined.error ? errorMessage(joined.error, "Couldn't join the reviewed-work contract") : null,
+    retry: () => setAttempt((n) => n + 1),
+    state: workState,
+    stateError: workBoard.error,
+    ps: workPs,
+    views: workViewList,
+    deploy: async () => {
+      if (!workProviders || !state) return;
+      const out = await run("Starting reviewed work", "Reviewed-work contract", () => deployWork(workProviders, state.rewardColor));
+      if (out) setWorkAddress(out.address);
+    },
+  };
+
+  const items = useMemo(
+    () => [
+      ...(address ? views.map((b) => answerItem(b, address, now, { read: read.set, solvedHere: solvedHere.set })) : []),
+      ...(workAddress && workState ? workViewList.map((w) => workItem(w, workState, workAddress, now)) : []),
+    ],
+    [views, workViewList, workState, address, workAddress, now, read.set, solvedHere.set],
+  );
+
   const value: Session = {
     deployment,
     state,
@@ -192,6 +293,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     run,
     deployToken,
     mint,
+    work,
+    items,
   };
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
