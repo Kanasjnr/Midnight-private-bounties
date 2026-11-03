@@ -73,6 +73,14 @@ and pass on retry).
 - **Per-browser marks** in localStorage, per network and board: hidden
   bounties, answers already read, bounties solved here. Losing them loses
   only the marks, never keys or funds.
+- **Key backup** (`#/backup`, from the account menu). One file holds the
+  private state of every contract on the board, exported by midnight-js and
+  encrypted under the store's passphrase, plus the board code and token
+  address. Restoring in a new browser imports the keys and joins the board.
+  If that browser already joined, it asks before replacing its keys. The
+  account menu shows a dot until the board's contracts are all in a backup
+  made here. Tested against midnight-js's level store in
+  `src/__tests__/backup.test.ts`.
 - **Local proving by default** (spike Q10), as in `../ui`. Wallet proving is
   one click away in setup, with the warning shown wherever it applies.
 - **No effects.** Anything from outside React (the clock, the URL, browser
@@ -86,7 +94,7 @@ and pass on retry).
 ## Not yet
 
 Contributor profiles beyond what an application includes (and verified GitHub), messages, the inbox, the activity
-feed from the indexer (Q14), key backup, light mode and browsing
+feed from the indexer (Q14), light mode and browsing
 without a wallet. Its store is separate from `../ui`'s: a different port is a
 different origin, so keys made on one page don't show on the other.
 
