@@ -81,6 +81,12 @@ and pass on retry).
   account menu shows a dot until the board's contracts are all in a backup
   made here. Tested against midnight-js's level store in
   `src/__tests__/backup.test.ts`.
+- **Browsing without a wallet.** On Preview and the local devnet the board,
+  bounty and work pages read straight from the network's public indexer
+  (`src/midnight/read-only.ts`), with the actions replaced by a prompt to
+  connect. Preprod and Mainnet indexers need a Blockfrost key, so there the
+  wallet's indexer is still needed. The board card copies a link
+  (`#/board/<network>/<code>`) that opens the board for anyone.
 - **Local proving by default** (spike Q10), as in `../ui`. Wallet proving is
   one click away in setup, with the warning shown wherever it applies.
 - **No effects.** Anything from outside React (the clock, the URL, browser
@@ -94,8 +100,7 @@ and pass on retry).
 ## Not yet
 
 Contributor profiles beyond what an application includes (and verified GitHub), messages, the inbox, the activity
-feed from the indexer (Q14), light mode and browsing
-without a wallet. Its store is separate from `../ui`'s: a different port is a
+feed from the indexer (Q14) and light mode. Its store is separate from `../ui`'s: a different port is a
 different origin, so keys made on one page don't show on the other.
 
 ## Run
