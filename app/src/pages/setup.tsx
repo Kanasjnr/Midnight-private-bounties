@@ -71,6 +71,7 @@ export function SetupPage() {
             n={5}
             title="Join a board"
             state={stepState(4)}
+            keepOpen
             note={boardOk && deployment.address ? `Bounty contract ${short(deployment.address, 10, 8)}` : "A board is one bounty contract"}
           >
             {unlocked && <BoardStep />}
@@ -110,7 +111,8 @@ export function SetupPage() {
   );
 }
 
-function Step({ n, title, note, state, children }: { n: number; title: string; note: string; state: StepState; children?: ReactNode }) {
+/** `keepOpen`: show the step's controls even once it's done (the board step, which has more to do after joining). */
+function Step({ n, title, note, state, children, keepOpen = false }: { n: number; title: string; note: string; state: StepState; children?: ReactNode; keepOpen?: boolean }) {
   return (
     <li className={cx("rounded-lg border bg-surface", state === "current" ? "border-line-hover" : "border-line")}>
       <div className="flex items-start gap-4 px-5 py-4">
@@ -131,7 +133,7 @@ function Step({ n, title, note, state, children }: { n: number; title: string; n
           <span className="text-sm break-words text-muted">{note}</span>
         </span>
       </div>
-      {children && state !== "done" && <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-4 sm:pl-15">{children}</div>}
+      {children && (state !== "done" || keepOpen) && <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-4 sm:pl-15">{children}</div>}
     </li>
   );
 }

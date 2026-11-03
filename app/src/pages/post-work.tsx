@@ -12,6 +12,7 @@ import { postWork, termsError } from "~/midnight/work-api";
 import { go, href } from "~/router";
 import { useSession } from "~/session";
 import { KindCard, Loading } from "~/pages/board";
+import { MintButton } from "~/components/mint-button";
 import { Amount, Button, cx, Field, Input, LinkButton, Panel, Textarea, Visibility } from "~/components/ui";
 
 const DAY = 86_400n;
@@ -159,7 +160,7 @@ function PostWorkForm() {
             <Field id="details" label="What the work is" aside={`${[...details.trim()].length}/${DETAILS_MAX}`}>
               <Textarea id="details" rows={5} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What should be delivered, and how you'll judge it. The contributor submits a link." />
             </Field>
-            <Field id="reward" label="Reward" hint={<span className="text-[13px] text-muted">{rewardBalance !== null ? `You hold ${amount(rewardBalance)} TEST. ` : ""}At least {amount(state.minReward)}. Locked in the contract until it's paid or comes back to you.</span>}>
+            <Field id="reward" label="Reward" aside={short ? <MintButton /> : undefined} hint={<span className="text-[13px] text-muted">{rewardBalance !== null ? `You hold ${amount(rewardBalance)} TEST. ` : ""}At least {amount(state.minReward)}. Locked in the contract until it's paid or comes back to you.</span>}>
               <div className="flex h-11 items-center rounded-lg border border-line bg-surface pr-3.5 transition-colors focus-within:border-focus hover:border-line-hover">
                 <input id="reward" inputMode="numeric" value={reward} onChange={(e) => setReward(e.target.value)} className="h-full min-w-0 flex-1 border-0 bg-transparent px-3.5 font-mono text-fg outline-none" />
                 <span className="text-sm text-muted">TEST</span>

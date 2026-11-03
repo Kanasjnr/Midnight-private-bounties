@@ -23,6 +23,7 @@ import { go, href } from "~/router";
 import { useSession } from "~/session";
 import { Loading } from "~/pages/board";
 import { TemplatePostForm } from "~/pages/post-template";
+import { MintButton } from "~/components/mint-button";
 import { Amount, Button, cx, Dot, Field, Input, LinkButton, Panel, Textarea, Visibility } from "~/components/ui";
 
 const PRESETS = [
@@ -111,7 +112,7 @@ function TemplateChoice() {
 }
 
 function PostForm() {
-  const { state, deployment, views, now, colorHex, rewardBalance, canMint, run } = useSession();
+  const { state, deployment, views, now, colorHex, rewardBalance, run } = useSession();
   const { proving } = useMidnightProviders();
   const [step, setStep] = useState<"edit" | "review">("edit");
   const [title, setTitle] = useState("");
@@ -223,15 +224,10 @@ function PostForm() {
             <Field
               id="reward"
               label="Reward"
+              aside={short ? <MintButton /> : undefined}
               hint={
                 <span className="text-[13px] text-muted">
                   {rewardBalance !== null ? `You hold ${amount(rewardBalance)} TEST. ` : ""}The wallet takes the reward from these when you sign. At least {amount(state.minReward)}.
-                  {short && canMint && (
-                    <>
-                      {" "}
-                      <a href={href({ name: "setup" })} className="text-link">Mint more</a>
-                    </>
-                  )}
                 </span>
               }
             >
