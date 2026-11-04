@@ -1,0 +1,16 @@
+{
+  "name": "spike-q15-nostr-chat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "spike": "node spike.mjs",
+    "bundle": "node bundle.mjs"
+  },
+  "dependencies": {
+    "nostr-tools": "2.25.5",
+    "ws": "8.18.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

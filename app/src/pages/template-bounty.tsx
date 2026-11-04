@@ -25,7 +25,7 @@ import {
 import { href } from "~/router";
 import { useSession, type TemplateSession } from "~/session";
 import { Countdown } from "~/components/countdown";
-import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, Field, Input, Panel, StatusText, Visibility } from "~/components/ui";
+import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, Field, Input, Panel, StatusText, Visibility, Prose } from "~/components/ui";
 import { WalletGate } from "~/components/wallet-gate";
 
 export function TemplateBounty({ slot, v }: { slot: TemplateSession; v: TemplateView }) {
@@ -49,14 +49,14 @@ export function TemplateBounty({ slot, v }: { slot: TemplateSession; v: Template
               <Chip>{TEMPLATES[v.template].name}</Chip>
               {v.mine && <Chip>Yours</Chip>}
             </div>
-            <h1 className="m-0 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">{title}</h1>
-            <p className="m-0 text-lg whitespace-pre-wrap text-fg-2">{cleanDetails(v.details) || "No question was given."}</p>
+            <h1 className="m-0 text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">{title}</h1>
+            <Prose text={cleanDetails(v.details) || "No question was given."} />
             {(hadHiddenCharacters(v.title) || hadHiddenCharacters(v.details)) && (
               <p className="m-0 text-[13px] text-warn">This listing had hidden characters (text direction or zero-width marks), removed here.</p>
             )}
           </header>
           <Panel tone="navy" className="flex flex-col gap-2 px-5 py-4">
-            <span className="text-[13px] font-semibold text-muted">What the proof checks</span>
+            <span className="text-[13px] font-medium text-muted">What the proof checks</span>
             {v.template === "factor" ? (
               <span>
                 Two whole numbers above 1 whose product is <span className="font-mono break-all">N = {v.n?.toString()}</span>.
@@ -88,8 +88,8 @@ export function TemplateBounty({ slot, v }: { slot: TemplateSession; v: Template
                 ["Poster", v.mine ? "You" : "Anonymous"],
                 [
                   "Bounty ID",
-                  <span className="inline-flex items-center gap-1 font-mono text-[13px]">
-                    {short(v.idHex, 8, 6)}
+                  <span className="inline-flex items-center gap-1 font-mono text-[13px] whitespace-nowrap">
+                    {short(v.idHex, 6, 4)}
                     <CopyButton text={v.idHex} label="Copy bounty ID" />
                   </span>,
                 ],
@@ -180,7 +180,7 @@ function SolverSide({ slot, v }: { slot: TemplateSession; v: TemplateView }) {
       ) : (
         <div className="flex flex-col gap-2">
           <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border border-dashed border-line-strong bg-surface px-5 py-6 text-center text-sm text-muted hover:border-line-hover">
-            <span className="font-semibold text-fg">Choose the record file your issuer gave you</span>
+            <span className="font-medium text-fg">Choose the record file your issuer gave you</span>
             <span>It's read in this browser only.</span>
             <input type="file" accept="application/json,.json" className="sr-only" onChange={(e) => void loadFile(e.target.files?.[0])} />
           </label>

@@ -28,7 +28,7 @@ export function BackupPage() {
   return (
     <div className="flex max-w-[720px] flex-col gap-10">
       <header className="flex flex-col gap-2">
-        <h1 className="m-0 text-4xl font-semibold tracking-tight">Keys and backup</h1>
+        <h1 className="m-0 text-3xl font-semibold tracking-tight">Keys and backup</h1>
         <p className="m-0 text-muted">
           This browser holds the keys that read your answers, claim refunds and get you paid. They never leave it, and nobody can
           recover them for you, so keep a backup somewhere safe.
@@ -94,7 +94,7 @@ function MakeBackup() {
       {board ? (
         <>
           <Panel tone={backup.needed ? "warn" : "ok"} className="flex flex-col gap-1 px-5 py-4 text-sm">
-            <span className="font-semibold">{backup.needed ? "Not backed up" : "Backed up"}</span>
+            <span className="font-medium">{backup.needed ? "Not backed up" : "Backed up"}</span>
             <span className="text-muted">
               {backup.needed
                 ? backup.at
@@ -202,12 +202,12 @@ function RestoreBackup() {
         }}
       >
         <label className="flex flex-col gap-2 text-sm">
-          <span className="font-semibold">Backup file</span>
+          <span className="font-medium">Backup file</span>
           <input
             type="file"
             accept=".json,application/json"
             onChange={(e) => void pick(e.target.files?.[0])}
-            className="text-sm text-muted file:mr-3 file:h-9 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:text-sm file:font-semibold file:text-fg hover:file:border-line-hover"
+            className="text-sm text-muted file:mr-3 file:h-9 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:text-sm file:font-medium file:text-fg hover:file:border-line-hover"
           />
           {fileError && <span className="text-bad">{fileError}</span>}
           {file && (
@@ -218,7 +218,7 @@ function RestoreBackup() {
           )}
         </label>
         <label className="flex flex-col gap-2 text-sm">
-          <span className="font-semibold">The passphrase you had when you made it</span>
+          <span className="font-medium">The passphrase you had when you made it</span>
           <Input type="password" autoComplete="off" value={pass} onChange={(e) => setPass(e.target.value)} className="max-w-[420px]" />
         </label>
         {conflicts ? (

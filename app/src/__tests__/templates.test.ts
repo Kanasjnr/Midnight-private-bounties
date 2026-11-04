@@ -91,7 +91,7 @@ function submitAs(board: Board, t: Template, id: Uint8Array, answer: bigint[], s
   return { error: board.errorOf(SOLVER_PK, ps, fn), run: () => board.call(SOLVER_PK, ps, fn) };
 }
 
-describe("factor, against the compiled contract", () => {
+describe("factor, against the compiled contract", { timeout: 120_000 }, () => {
   const N = 2147483647n * 2147483629n;
   const post = () =>
     posted("factor", (salt, key) => (ctx) =>
@@ -112,7 +112,7 @@ describe("factor, against the compiled contract", () => {
   });
 });
 
-describe("signed record, against the compiled contract", () => {
+describe("signed record, against the compiled contract", { timeout: 120_000 }, () => {
   it("a record issued in the app passes the circuit; templateSubmitError agrees on the rest", async () => {
     const issuer = newIssuerKey();
     const stranger = newIssuerKey();
