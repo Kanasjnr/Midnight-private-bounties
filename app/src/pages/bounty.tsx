@@ -24,7 +24,7 @@ import { TemplateBounty } from "~/pages/template-bounty";
 import { canBrowse } from "~/midnight/read-only";
 import { WalletGate } from "~/components/wallet-gate";
 import { Countdown } from "~/components/countdown";
-import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, LinkButton, Panel, StatusText, Textarea, Visibility } from "~/components/ui";
+import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, LinkButton, Panel, StatusText, Textarea, Visibility, Prose } from "~/components/ui";
 
 export function BountyPage({ route }: { route: Extract<Route, { name: "bounty" }> }) {
   const { status } = useWallet();
@@ -98,8 +98,8 @@ function Heading({ b, mine }: { b: BountyView; mine?: boolean }) {
           <Chip>Yours</Chip>
         </div>
       )}
-      <h1 className="m-0 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">{cleanTitle(b.title) || "Untitled"}</h1>
-      <p className="m-0 text-lg whitespace-pre-wrap text-fg-2">{cleanDetails(b.details) || "No question was given."}</p>
+      <h1 className="m-0 text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">{cleanTitle(b.title) || "Untitled"}</h1>
+      <Prose text={cleanDetails(b.details) || "No question was given."} />
       {hidden && <p className="m-0 text-[13px] text-warn">This listing had hidden characters (text direction or zero-width marks), removed here.</p>}
     </header>
   );
@@ -126,8 +126,8 @@ function Details({ b, extra }: { b: BountyView; extra?: [ReactNode, ReactNode][]
           ...(extra ?? []),
           [
             "Bounty ID",
-            <span className="inline-flex items-center gap-1 font-mono text-[13px]">
-              {short(b.idHex, 8, 6)}
+            <span className="inline-flex items-center gap-1 font-mono text-[13px] whitespace-nowrap">
+              {short(b.idHex, 6, 4)}
               <CopyButton text={b.idHex} label="Copy bounty ID" />
             </span>,
           ],
@@ -215,7 +215,7 @@ function SolverView({ b }: { b: BountyView }) {
 
       {solvedByMe && b.status === Status.SOLVED ? (
         <Panel tone="ok" className="flex flex-col gap-1 px-5 py-4">
-          <span className="font-semibold">You solved it</span>
+          <span className="font-medium">You solved it</span>
           <span className="text-sm text-fg-2">
             {b.reward !== null ? `${amount(b.reward)} TEST` : "The reward"} went to your shielded balance. It shows in your wallet once it
             has synced.
@@ -229,7 +229,7 @@ function SolverView({ b }: { b: BountyView }) {
         <WalletGate doing="solve it">
         <section aria-labelledby="answer-label" className="flex flex-col gap-3">
           <div className={cx("flex flex-col rounded-lg border bg-surface", err === null ? "border-ok-line" : "border-line")}>
-            <label id="answer-label" htmlFor="answer" className="px-4 pt-3 text-sm font-semibold">
+            <label id="answer-label" htmlFor="answer" className="px-4 pt-3 text-sm font-medium">
               Your answer
             </label>
             <Textarea
@@ -310,7 +310,7 @@ function PosterView({ b }: { b: BountyView }) {
       aside={
         <>
           <Details b={b} extra={[["Listed", "On the public board"]]} />
-          <section aria-labelledby="key-title" className="flex flex-col gap-2 rounded-lg border border-line p-4 text-sm">
+          <section aria-labelledby="key-title" className="flex flex-col gap-2 rounded-[10px] border border-line p-4 text-sm">
             <h2 id="key-title" className="m-0 text-[15px] font-semibold">
               Key for this bounty
             </h2>

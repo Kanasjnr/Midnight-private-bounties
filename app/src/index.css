@@ -1,64 +1,193 @@
 @import "tailwindcss";
-@import "@fontsource-variable/urbanist";
+@import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
 /*
- * Midnight's palette, from the brand values in midnight-docs: the deep blue
- * for primary actions, violet for what stays private, and near-black
- * surfaces. Colors are tokens so a light theme can redefine them later.
- * Fonts are self-hosted (Fontsource), so the page makes no request to a font
- * CDN.
+ * Two themes on one set of tokens. The Tailwind names below point at plain CSS
+ * variables, which :root sets for dark and the light blocks redefine: once for
+ * a light system preference (unless the user picked dark), and once for an
+ * explicit light choice. The choice is `data-theme` on <html> (src/theme.ts).
+ *
+ * Restraint is the point: neutral surfaces, one accent for links and focus,
+ * violet only for what stays private, and status colors only on status.
+ * Primary buttons are the foreground color, not a brand fill.
+ * Fonts are self-hosted (Fontsource), so the page makes no request to a font CDN.
  */
-@theme {
-  --font-sans: "Urbanist Variable", system-ui, sans-serif;
+@theme inline {
+  --font-sans: "Geist Variable", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
 
-  --color-page: #0a0a0a;
-  --color-surface: #111111;
-  --color-raised: #151515;
-  --color-chip: #1c1c1c;
-  --color-line: #222222;
-  --color-line-soft: #1b1b1b;
-  --color-line-strong: #2e2e2e;
-  --color-line-hover: #3a3a3a;
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-chip: var(--chip);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-line-strong: var(--line-strong);
+  --color-line-hover: var(--line-hover);
 
-  --color-fg: #e1e1e6;
-  --color-fg-2: #c5c5cc;
-  --color-muted: #9b9ba4;
-  --color-faint: #808089;
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-on-fg: var(--on-fg);
 
-  --color-brand: #0000fe;
-  --color-brand-hover: #0000dd;
-  --color-focus: #005aff;
-  --color-link: #0677f9;
-  --color-link-hover: #3d95ff;
-  --color-private: #a08cff;
-  --color-navy: #0a0c16;
-  --color-navy-line: #1a1d33;
+  --color-brand: var(--brand);
+  --color-focus: var(--focus);
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
+  --color-private: var(--private);
+  --color-navy: var(--navy);
+  --color-navy-line: var(--navy-line);
 
-  --color-ok: #3fb27f;
-  --color-ok-line: #24543f;
-  --color-ok-bg: #0d1a14;
-  --color-warn: #f5a623;
-  --color-warn-line: #3a2e14;
-  --color-warn-bg: #15110a;
-  --color-bad: #f26d6d;
-  --color-bad-line: #4a1f1f;
-  --color-bad-bg: #1a0d0d;
+  --color-ok: var(--ok);
+  --color-ok-line: var(--ok-line);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-line: var(--warn-line);
+  --color-warn-bg: var(--warn-bg);
+  --color-bad: var(--bad);
+  --color-bad-line: var(--bad-line);
+  --color-bad-bg: var(--bad-bg);
+
+  --shadow-pop: var(--pop);
+}
+
+:root {
+  color-scheme: dark;
+  --page: #0b0b0d;
+  --surface: #111114;
+  --raised: #17171b;
+  --chip: #1d1d22;
+  --line: #222227;
+  --line-soft: #1a1a1e;
+  --line-strong: #2c2c32;
+  --line-hover: #3d3d45;
+
+  --fg: #ededf0;
+  --fg-2: #c8c8ce;
+  --muted: #9a9aa3;
+  --faint: #7b7b85;
+  --on-fg: #0b0b0d;
+
+  --brand: #3d5afe;
+  --focus: #6c8cff;
+  --link: #7c9cff;
+  --link-hover: #a3b9ff;
+  --private: #a99bff;
+  --navy: #0e0f1a;
+  --navy-line: #1e2036;
+
+  --ok: #4cc38a;
+  --ok-line: #1f4a36;
+  --ok-bg: #0d1813;
+  --warn: #f0b149;
+  --warn-line: #43341a;
+  --warn-bg: #17130b;
+  --bad: #f07a7a;
+  --bad-line: #4d2323;
+  --bad-bg: #1a0e0e;
+
+  --pop: 0 12px 40px -12px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.04);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --page: #ffffff;
+    --surface: #fafafb;
+    --raised: #f3f3f5;
+    --chip: #efeff2;
+    --line: #e5e5ea;
+    --line-soft: #efeff2;
+    --line-strong: #d6d6dc;
+    --line-hover: #b3b3bc;
+
+    --fg: #0c0c0f;
+    --fg-2: #2a2a31;
+    --muted: #5b5b66;
+    --faint: #73737e;
+    --on-fg: #ffffff;
+
+    --brand: #2440f0;
+    --focus: #2f55e6;
+    --link: #2448d8;
+    --link-hover: #1a35a8;
+    --private: #6a45d9;
+    --navy: #f6f4ff;
+    --navy-line: #e3ddfb;
+
+    --ok: #17834f;
+    --ok-line: #bfe6d1;
+    --ok-bg: #f1faf5;
+    --warn: #a8610a;
+    --warn-line: #f1d9a8;
+    --warn-bg: #fdf8ee;
+    --bad: #c0302f;
+    --bad-line: #f3c9c8;
+    --bad-bg: #fdf3f3;
+
+    --pop: 0 12px 40px -12px rgb(16 16 24 / 0.18), 0 0 0 1px rgb(16 16 24 / 0.06);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --page: #ffffff;
+  --surface: #fafafb;
+  --raised: #f3f3f5;
+  --chip: #efeff2;
+  --line: #e5e5ea;
+  --line-soft: #efeff2;
+  --line-strong: #d6d6dc;
+  --line-hover: #b3b3bc;
+
+  --fg: #0c0c0f;
+  --fg-2: #2a2a31;
+  --muted: #5b5b66;
+  --faint: #73737e;
+  --on-fg: #ffffff;
+
+  --brand: #2440f0;
+  --focus: #2f55e6;
+  --link: #2448d8;
+  --link-hover: #1a35a8;
+  --private: #6a45d9;
+  --navy: #f6f4ff;
+  --navy-line: #e3ddfb;
+
+  --ok: #17834f;
+  --ok-line: #bfe6d1;
+  --ok-bg: #f1faf5;
+  --warn: #a8610a;
+  --warn-line: #f1d9a8;
+  --warn-bg: #fdf8ee;
+  --bad: #c0302f;
+  --bad-line: #f3c9c8;
+  --bad-bg: #fdf3f3;
+
+  --pop: 0 12px 40px -12px rgb(16 16 24 / 0.18), 0 0 0 1px rgb(16 16 24 / 0.06);
 }
 
 @layer base {
-  html {
-    color-scheme: dark;
-  }
   body {
     margin: 0;
     background: var(--color-page);
     color: var(--color-fg);
     font-family: var(--font-sans);
     font-size: 15px;
-    line-height: 1.5;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    letter-spacing: -0.015em;
+  }
+  p {
+    text-wrap: pretty;
   }
   :focus-visible {
     outline: 2px solid var(--color-focus);
@@ -67,8 +196,14 @@
   ::placeholder {
     color: var(--color-faint);
   }
+  ::selection {
+    background: color-mix(in srgb, var(--color-focus) 35%, transparent);
+  }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 }

@@ -418,7 +418,7 @@ flowchart TD
 The app (`app/`) has the board (both kinds, all four templates), setup, choosing the kind, posting
 with every template, the bounty page for solver and poster, the reviewed-work page for every role
 (apply with an application code, claim, submit, review, collect, refund, overturn, reopen), My
-bounties, an issuer page that signs records into files, key backup and restore, read-only browsing with no wallet (on networks with a public indexer), the activity feed (Q14), and chat for reviewed work over Nostr relays (Q15).
+bounties, an issuer page that signs records into files, key backup and restore, read-only browsing with no wallet (on networks with a public indexer), a personal activity feed (Q14, with new applications and messages decrypted in the browser), and chat for reviewed work over Nostr relays (Q15).
 Still to build: profiles beyond what an application carries ([app/README.md](app/README.md)).
 
 | Screen | Data source | Midnight piece |

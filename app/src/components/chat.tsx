@@ -51,7 +51,8 @@ function decrypted<T, R>(tag: string, open: (ev: Event) => Promise<T | null>, bu
 }
 
 const threads = new Map<string, Store<ChatMessage[] | null>>();
-function threadStore(ch: Channel): Store<ChatMessage[] | null> {
+/** One thread's conversation, decrypted as events arrive; one store per thread. */
+export function threadStore(ch: Channel): Store<ChatMessage[] | null> {
   let s = threads.get(ch.thread);
   if (!s) {
     s = decrypted<Sealed, ChatMessage[]>(ch.thread, (ev) => openMessage(ch, ev), (m) => conversation(m, ch.me));
@@ -66,32 +67,38 @@ export interface Inbound extends OpenedApplication {
 
 const inboxes = new Map<string, Store<Inbound[] | null>>();
 /**
- * A poster's applications for one bounty, opened with their key. The latest
- * code from each applicant (by pseudonym) wins, so re-applying replaces.
+ * A poster's applications for one bounty, opened with their key; one store
+ * per inbox tag. The latest code from each applicant (by pseudonym) wins, so
+ * re-applying replaces. The ledger is only used for the bounty's poster key,
+ * which never changes.
  */
+export function inboxStore(tag: string, state: WorkLedger, address: string, v: WorkView, posterSeed: Uint8Array): Store<Inbound[] | null> {
+  let s = inboxes.get(tag);
+  if (!s) {
+    s = decrypted<Inbound, Inbound[]>(
+      tag,
+      (ev) => openApplication(state, address, v, posterSeed, ev.content).then((a) => ({ ...a, at: ev.created_at * 1000 }), () => null),
+      (apps) => {
+        const latest = new Map<string, Inbound>();
+        for (const a of apps) {
+          const k = a.pseudonym.join(",");
+          const prev = latest.get(k);
+          if (!prev || prev.at < a.at) latest.set(k, a);
+        }
+        return [...latest.values()].sort((a, b) => b.at - a.at);
+      },
+    );
+    inboxes.set(tag, s);
+  }
+  return s;
+}
+
 export function useInbox(tag: string | null, state: WorkLedger | null, address: string | null, v: WorkView, posterSeed: Uint8Array | undefined): Inbound[] | null {
-  const store = useMemo(() => {
-    if (!tag || !state || !address || !posterSeed) return constantStore<Inbound[] | null>(null);
-    let s = inboxes.get(tag);
-    if (!s) {
-      s = decrypted<Inbound, Inbound[]>(
-        tag,
-        (ev) => openApplication(state, address, v, posterSeed, ev.content).then((a) => ({ ...a, at: ev.created_at * 1000 }), () => null),
-        (apps) => {
-          const latest = new Map<string, Inbound>();
-          for (const a of apps) {
-            const k = a.pseudonym.join(",");
-            const prev = latest.get(k);
-            if (!prev || prev.at < a.at) latest.set(k, a);
-          }
-          return [...latest.values()].sort((a, b) => b.at - a.at);
-        },
-      );
-      inboxes.set(tag, s);
-    }
-    return s;
-    // The ledger only needs to know the bounty's poster key, which never changes.
-  }, [tag, address, posterSeed !== undefined]);
+  const store = useMemo(
+    () => (tag && state && address && posterSeed ? inboxStore(tag, state, address, v, posterSeed) : constantStore<Inbound[] | null>(null)),
+    // The store is cached by tag; the rest only matters for the first one.
+    [tag, address, posterSeed !== undefined],
+  );
   return useStore(store);
 }
 
@@ -131,7 +138,7 @@ export function ChatBox({ ch, other, beforeSend }: { ch: Channel; other: string;
   };
 
   return (
-    <div className="flex flex-col rounded-lg border border-line bg-surface">
+    <div className="flex flex-col rounded-[10px] border border-line bg-surface">
       <div className="flex max-h-[420px] min-h-28 flex-col gap-3 overflow-y-auto px-4 py-4">
         {messages === null ? (
           <span className="text-sm text-faint">Opening the conversation…</span>

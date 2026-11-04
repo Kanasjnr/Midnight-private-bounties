@@ -22,7 +22,7 @@ export function PostStart() {
   return (
     <div className="flex flex-col gap-8">
       <header className="flex max-w-[640px] flex-col gap-2">
-        <h1 className="m-0 text-4xl font-semibold tracking-tight">Post a bounty</h1>
+        <h1 className="m-0 text-3xl font-semibold tracking-tight">Post a bounty</h1>
         <p className="m-0 text-muted">Pick by who decides the work is done: you, or a proof.</p>
       </header>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-4">
@@ -117,7 +117,7 @@ function PostWorkForm() {
     <div className="flex flex-wrap-reverse items-start gap-12">
       <aside aria-label="Summary" className="flex max-w-[380px] min-w-0 flex-[1_1_300px] flex-col gap-6">
         <Panel className="flex flex-col gap-3 p-5">
-          <span className="text-[13px] font-semibold text-muted">You are posting</span>
+          <span className="text-[13px] font-medium text-muted">You are posting</span>
           <span className="text-lg leading-snug font-semibold break-words">{shownTitle}</span>
           <Amount value={parsedReward !== null ? amount(parsedReward) : "–"} className="text-3xl" />
           <ul className="m-0 flex list-disc flex-col gap-1.5 pl-4.5 text-sm text-fg-2 marker:text-faint">
@@ -153,7 +153,7 @@ function PostWorkForm() {
               if (!error) setStep("review");
             }}
           >
-            <h1 className="m-0 text-3xl font-semibold tracking-tight">Work someone delivers and you review</h1>
+            <h1 className="m-0 text-2xl font-semibold tracking-tight">Work someone delivers and you review</h1>
             <Field id="title" label="Title" aside={`${[...title.trim()].length}/${TITLE_MAX}`}>
               <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Write a migration guide for the latest SDK" />
             </Field>
@@ -161,16 +161,16 @@ function PostWorkForm() {
               <Textarea id="details" rows={5} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What should be delivered, and how you'll judge it. The contributor submits a link." />
             </Field>
             <Field id="reward" label="Reward" aside={short ? <MintButton /> : undefined} hint={<span className="text-[13px] text-muted">{rewardBalance !== null ? `You hold ${amount(rewardBalance)} TEST. ` : ""}At least {amount(state.minReward)}. Locked in the contract until it's paid or comes back to you.</span>}>
-              <div className="flex h-11 items-center rounded-lg border border-line bg-surface pr-3.5 transition-colors focus-within:border-focus hover:border-line-hover">
-                <input id="reward" inputMode="numeric" value={reward} onChange={(e) => setReward(e.target.value)} className="h-full min-w-0 flex-1 border-0 bg-transparent px-3.5 font-mono text-fg outline-none" />
+              <div className="flex h-10 items-center rounded-md border border-line-strong bg-page pr-3 transition-[border-color,box-shadow] focus-within:border-focus focus-within:ring-3 focus-within:ring-focus/15 hover:border-line-hover">
+                <input id="reward" inputMode="numeric" value={reward} onChange={(e) => setReward(e.target.value)} className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 tabular text-fg outline-none" />
                 <span className="text-sm text-muted">TEST</span>
               </div>
             </Field>
             <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-              <legend className="mb-2 text-sm font-semibold">Who works on it</legend>
-              <div role="group" className="flex overflow-hidden rounded-lg border border-line">
-                {([[false, "You pick an applicant"], [true, "First to claim"]] as const).map(([v, label], i) => (
-                  <button key={label} type="button" aria-pressed={firstToClaim === v} onClick={() => setFirstToClaim(v)} className={cx("h-11 flex-1 text-sm font-semibold transition-colors", i > 0 && "border-l border-line", firstToClaim === v ? "bg-fg text-page" : "bg-surface text-fg-2 hover:bg-raised")}>
+              <legend className="mb-2 text-sm font-medium">Who works on it</legend>
+              <div role="group" className="flex gap-0.5 rounded-lg bg-chip p-0.5">
+                {([[false, "You pick an applicant"], [true, "First to claim"]] as const).map(([v, label]) => (
+                  <button key={label} type="button" aria-pressed={firstToClaim === v} onClick={() => setFirstToClaim(v)} className={cx("h-9 flex-1 rounded-md text-sm font-medium transition-colors", firstToClaim === v ? "bg-page text-fg shadow-sm ring-1 ring-line" : "text-muted hover:text-fg")}>
                     {label}
                   </button>
                 ))}
@@ -191,7 +191,7 @@ function PostWorkForm() {
               Work nobody delivered comes back to you after the deadline.
             </span>
             <fieldset className="m-0 flex flex-col gap-3 border-0 p-0">
-              <legend className="mb-2 text-sm font-semibold">Arbiter (optional)</legend>
+              <legend className="mb-2 text-sm font-medium">Arbiter (optional)</legend>
               <Input aria-label="Arbiter ID" className="font-mono text-[13px]" placeholder="Their arbiter ID, from their board card. Leave empty for none." value={arbiter} onChange={(e) => setArbiter(e.target.value)} />
               {arbiterHex && <DaysField id="appeal" label="Time to appeal" value={appeal} onChange={setAppeal} />}
               <span className="text-[13px] text-muted">An arbiter's only power is to overturn your rejection. Without one, a rejection reopens the work for someone else.</span>
@@ -214,7 +214,7 @@ function PostWorkForm() {
               </h1>
               <p className="m-0 text-muted">This goes on chain exactly as shown. The contract holds both of you to these terms.</p>
             </div>
-            <dl className="m-0 grid grid-cols-[160px_minmax(0,1fr)] rounded-lg border border-line bg-surface text-sm">
+            <dl className="m-0 grid grid-cols-[160px_minmax(0,1fr)] overflow-hidden rounded-[10px] border border-line text-sm">
               {(
                 [
                   ["Title", shownTitle],
@@ -255,8 +255,8 @@ function PostWorkForm() {
 function DaysField({ id, label, value, onChange, suffix = "days" }: { id: string; label: string; value: string; onChange: (v: string) => void; suffix?: string }) {
   return (
     <Field id={id} label={label}>
-      <div className="flex h-11 items-center rounded-lg border border-line bg-surface pr-3.5 transition-colors focus-within:border-focus hover:border-line-hover">
-        <input id={id} inputMode="numeric" value={value} onChange={(e) => onChange(e.target.value)} className="h-full w-full min-w-0 border-0 bg-transparent px-3.5 font-mono text-fg outline-none" />
+      <div className="flex h-10 items-center rounded-md border border-line-strong bg-page pr-3 transition-[border-color,box-shadow] focus-within:border-focus focus-within:ring-3 focus-within:ring-focus/15 hover:border-line-hover">
+        <input id={id} inputMode="numeric" value={value} onChange={(e) => onChange(e.target.value)} className="h-full w-full min-w-0 border-0 bg-transparent px-3 tabular text-fg outline-none" />
         <span className="text-sm whitespace-nowrap text-muted">{suffix}</span>
       </div>
     </Field>

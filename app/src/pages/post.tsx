@@ -90,7 +90,7 @@ function TemplateChoice() {
               onClick={() => setPick(k)}
               className={cx("flex flex-col gap-1 rounded-lg border px-4 py-3 text-left transition-colors", pick === k ? "border-fg bg-raised" : "border-line bg-surface hover:border-line-hover")}
             >
-              <span className="font-semibold">{label}</span>
+              <span className="font-medium">{label}</span>
               <span className="text-[13px] text-muted">{about}</span>
             </button>
           ))}
@@ -166,7 +166,7 @@ function PostForm() {
     <div className="flex flex-wrap-reverse items-start gap-12">
       <aside aria-label="Summary" className="flex max-w-[380px] min-w-0 flex-[1_1_300px] flex-col gap-6">
         <Panel className="flex flex-col gap-3 p-5">
-          <span className="text-[13px] font-semibold text-muted">You are posting</span>
+          <span className="text-[13px] font-medium text-muted">You are posting</span>
           <span className="text-lg leading-snug font-semibold break-words">{shownTitle}</span>
           <Amount value={parsedReward !== null ? amount(parsedReward) : "–"} className="text-3xl" />
           <span className="text-sm text-muted">
@@ -231,21 +231,21 @@ function PostForm() {
                 </span>
               }
             >
-              <div className="flex h-11 items-center rounded-lg border border-line bg-surface pr-3.5 transition-colors focus-within:border-focus hover:border-line-hover">
-                <input id="reward" inputMode="numeric" value={reward} onChange={(e) => setReward(e.target.value)} className="h-full min-w-0 flex-1 border-0 bg-transparent px-3.5 font-mono text-fg outline-none" />
+              <div className="flex h-10 items-center rounded-md border border-line-strong bg-page pr-3 transition-[border-color,box-shadow] focus-within:border-focus focus-within:ring-3 focus-within:ring-focus/15 hover:border-line-hover">
+                <input id="reward" inputMode="numeric" value={reward} onChange={(e) => setReward(e.target.value)} className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 tabular text-fg outline-none" />
                 <span className="text-sm text-muted">TEST</span>
               </div>
             </Field>
             <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-              <legend className="mb-2 text-sm font-semibold">Deadline</legend>
-              <div role="group" className="flex overflow-hidden rounded-lg border border-line">
-                {[...PRESETS.map((p) => p.label), "Custom"].map((label, i) => (
+              <legend className="mb-2 text-sm font-medium">Deadline</legend>
+              <div role="group" className="flex gap-0.5 rounded-lg bg-chip p-0.5">
+                {[...PRESETS.map((p) => p.label), "Custom"].map((label) => (
                   <button
                     key={label}
                     type="button"
                     aria-pressed={preset === label}
                     onClick={() => setPreset(label)}
-                    className={cx("h-11 flex-1 text-sm font-semibold transition-colors", i > 0 && "border-l border-line", preset === label ? "bg-fg text-page" : "bg-surface text-fg-2 hover:bg-raised")}
+                    className={cx("h-9 flex-1 rounded-md text-sm font-medium transition-colors", preset === label ? "bg-page text-fg shadow-sm ring-1 ring-line" : "text-muted hover:text-fg")}
                   >
                     {label}
                   </button>
@@ -279,7 +279,7 @@ function PostForm() {
               </h1>
               <p className="m-0 text-muted">This goes on chain exactly as shown, and can't be edited or removed later.</p>
             </div>
-            <dl className="m-0 grid grid-cols-[140px_minmax(0,1fr)] rounded-lg border border-line bg-surface text-sm">
+            <dl className="m-0 grid grid-cols-[140px_minmax(0,1fr)] overflow-hidden rounded-[10px] border border-line text-sm">
               {(
                 [
                   ["Title", shownTitle],

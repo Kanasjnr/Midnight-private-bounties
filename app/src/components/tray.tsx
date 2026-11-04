@@ -56,15 +56,15 @@ export function Tray() {
         type="button"
         aria-expanded="false"
         onClick={() => setCollapsedAt(null)}
-        className="fixed right-4 bottom-4 z-30 inline-flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border border-line-strong bg-surface py-2.5 pr-4 pl-3.5 text-sm shadow-2xl shadow-black/50"
+        className="fixed right-4 bottom-4 z-30 inline-flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border border-line-strong bg-surface py-2.5 pr-4 pl-3.5 text-sm shadow-pop"
       >
         <Dot tone={running ? "private" : entries[0]?.state === "failed" ? "bad" : "ok"} className={running ? "animate-pulse" : ""} />
         {running ? (
           <span className="truncate">
-            <strong className="font-semibold">{running.label}</strong> <span className="text-muted">· {phaseText(running.phase, wallet)}</span>
+            <strong className="font-medium">{running.label}</strong> <span className="text-muted">· {phaseText(running.phase, wallet)}</span>
           </span>
         ) : (
-          <span className="font-semibold">Transactions</span>
+          <span className="font-medium">Transactions</span>
         )}
         {running && <Elapsed from={running.startedAt} />}
         <span className="rounded bg-chip px-1.5 font-mono text-xs">{entries.length}</span>
@@ -75,10 +75,10 @@ export function Tray() {
   return (
     <section
       aria-label="Transactions"
-      className="fixed right-4 bottom-4 z-30 flex w-[380px] max-w-[calc(100vw-2rem)] flex-col rounded-xl border border-line-strong bg-surface shadow-2xl shadow-black/50"
+      className="fixed right-4 bottom-4 z-30 flex w-[380px] max-w-[calc(100vw-2rem)] flex-col rounded-xl border border-line-strong bg-surface shadow-pop"
     >
       <header className="flex items-center justify-between border-b border-line px-4 py-3">
-        <span className="text-sm font-semibold">Transactions</span>
+        <span className="text-sm font-medium">Transactions</span>
         <button type="button" aria-label="Collapse" aria-expanded="true" onClick={() => setCollapsedAt(entries[0]?.id ?? null)} className="rounded-md p-1 text-muted hover:bg-chip hover:text-fg">
           <ChevronDown className="size-4" />
         </button>
@@ -100,7 +100,7 @@ function Row({ e, wallet, onDismiss }: { e: TxEntry; wallet: boolean; onDismiss:
       <div className="flex items-start gap-3">
         <Dot tone={e.state === "running" ? "private" : e.state === "failed" ? "bad" : "ok"} className={cx("mt-2", e.state === "running" && "animate-pulse")} />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-sm font-semibold">{e.state === "failed" ? `${e.label}: failed` : e.state === "done" ? doneLabel(e.label) : e.label}</span>
+          <span className="text-sm font-medium">{e.state === "failed" ? `${e.label}: failed` : e.state === "done" ? doneLabel(e.label) : e.label}</span>
           <span className="truncate text-[13px] text-muted">{e.subject}</span>
         </span>
         <Elapsed from={e.startedAt} to={e.endedAt} />
@@ -136,7 +136,7 @@ function Row({ e, wallet, onDismiss }: { e: TxEntry; wallet: boolean; onDismiss:
         </>
       )}
       {e.state === "done" && e.href && (
-        <a href={e.href} className="text-[13px] font-semibold text-link no-underline hover:text-link-hover">
+        <a href={e.href} className="text-[13px] font-medium text-link no-underline hover:text-link-hover">
           View
         </a>
       )}

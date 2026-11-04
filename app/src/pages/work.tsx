@@ -37,7 +37,7 @@ import { href, type Route } from "~/router";
 import { useSession } from "~/session";
 import { Countdown } from "~/components/countdown";
 import { Loading } from "~/pages/board";
-import { Amount, Button, Chip, CopyButton, Facts, Field, Input, LinkButton, Panel, StatusText, Textarea, Visibility } from "~/components/ui";
+import { Amount, Button, Chip, CopyButton, Facts, Field, Input, LinkButton, Panel, Prose, StatusText, Textarea, Visibility } from "~/components/ui";
 import { WalletGate } from "~/components/wallet-gate";
 import { canBrowse } from "~/midnight/read-only";
 import { ChatBox, useChannel, useInbox, type Inbound } from "~/components/chat";
@@ -115,8 +115,8 @@ function WorkDetail({ v }: { v: WorkView }) {
               {v.assignedToMe && <Chip className="border-private/40 text-private">You're on it</Chip>}
               {v.arbiterMe && <Chip>You're the arbiter</Chip>}
             </div>
-            <h1 className="m-0 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">{title}</h1>
-            <p className="m-0 text-lg whitespace-pre-wrap text-fg-2">{cleanDetails(v.details) || "No description was given."}</p>
+            <h1 className="m-0 text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">{title}</h1>
+            <Prose text={cleanDetails(v.details) || "No description was given."} />
             {(hadHiddenCharacters(v.title) || hadHiddenCharacters(v.details)) && (
               <p className="m-0 text-[13px] text-warn">This listing had hidden characters (text direction or zero-width marks), removed here.</p>
             )}
@@ -160,8 +160,8 @@ function WorkDetail({ v }: { v: WorkView }) {
                 ["Arbiter", t.hasArbiter ? `Yes, ${span(t.appealWindow)} to appeal` : "None"],
                 [
                   "Work ID",
-                  <span className="inline-flex items-center gap-1 font-mono text-[13px]">
-                    {short(v.idHex, 8, 6)}
+                  <span className="inline-flex items-center gap-1 font-mono text-[13px] whitespace-nowrap">
+                    {short(v.idHex, 6, 4)}
                     <CopyButton text={v.idHex} label="Copy work ID" />
                   </span>,
                 ],
@@ -577,7 +577,7 @@ function Applications({ v }: { v: WorkView }) {
         <span className="text-sm text-faint">Checking for applications…</span>
       ) : all.length + extra.length === 0 ? (
         <Panel className="flex flex-col gap-1 px-5 py-4 text-sm">
-          <span className="font-semibold">No applications yet</span>
+          <span className="font-medium">No applications yet</span>
           <span className="text-muted">Share the link below. When someone applies, it shows up here.</span>
         </Panel>
       ) : (
@@ -627,7 +627,7 @@ function Contact({ v, a, assignable, contributor = false }: { v: WorkView; a: In
   return (
     <Panel tone={contributor ? "navy" : "plain"} className="flex flex-col gap-3 px-5 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <span className="font-semibold">
+        <span className="font-medium">
           {cleanTitle(a.name) || (intro ? "The person who claimed it" : "No name given")}
           {contributor && <span className="ml-2 text-[13px] font-normal text-private">{intro ? "Working on it" : "Assigned"}</span>}
         </span>
@@ -643,7 +643,7 @@ function Contact({ v, a, assignable, contributor = false }: { v: WorkView; a: In
           ))}
         </ul>
       )}
-      {a.plan && <p className="m-0 whitespace-pre-wrap text-fg-2">{cleanDetails(a.plan)}</p>}
+      {a.plan && <Prose text={cleanDetails(a.plan)} />}
       {!intro && <span className="text-[13px] text-faint">The name and links are what they wrote; nothing here checks them.</span>}
       <div className="flex flex-wrap items-center gap-3">
         {assignable && <Act v={v} a="assign" label="Assign them" call={() => assign(work.contract!, v, a.pseudonym, now)} />}

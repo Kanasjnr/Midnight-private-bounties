@@ -23,8 +23,8 @@ export function BountyTable({
   footer?: ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-line bg-surface">
-      <div className={cx(ROW, "border-b border-line px-5 py-2.5 text-xs font-semibold tracking-wider text-faint uppercase")}>
+    <div className="overflow-hidden rounded-[10px] border border-line">
+      <div className={cx(ROW, "border-b border-line px-5 py-2.5 text-xs font-medium tracking-wider text-faint uppercase")}>
         <span>Bounty</span>
         <span className="hidden text-right sm:block">Reward</span>
         <span className="hidden sm:block">Time</span>
@@ -37,18 +37,18 @@ export function BountyTable({
           <a key={`${b.kind}:${b.idHex}`} href={b.href} className={cx(ROW, "border-b border-line-soft px-5 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-raised")}>
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="flex flex-wrap items-center gap-2">
-                <span className="text-base font-semibold tracking-tight">{cleanTitle(b.title) || "Untitled"}</span>
+                <span className="text-base font-medium tracking-tight">{cleanTitle(b.title) || "Untitled"}</span>
                 {b.mine && <Chip>Yours</Chip>}
                 {b.working && <Chip className="border-private/40 text-private">You're on it</Chip>}
                 {copies?.has(b.idHex) && <Chip className="border-warn-line text-warn">Copies an earlier bounty</Chip>}
               </span>
               <span className="truncate text-sm text-muted">
-                <span className="font-semibold text-fg-2">{b.kind === "work" ? "Reviewed" : "Verified"}</span> <span className="text-faint">· {b.sub}</span>
+                <span className="font-medium text-fg-2">{b.kind === "work" ? "Reviewed" : "Verified"}</span> <span className="text-faint">· {b.sub}</span>
                 {b.postedAt !== null && <span className="text-faint"> · posted {ago(b.postedAt, now)}</span>}
                 <span className="text-fg-2 sm:hidden"> · {b.reward !== null ? `${amount(b.reward)} TEST` : ""}</span>
               </span>
             </span>
-            <span className="hidden text-right font-mono text-[15px] font-medium whitespace-nowrap sm:block">
+            <span className="hidden text-right text-[15px] font-medium whitespace-nowrap tabular sm:block">
               {b.reward !== null ? amount(b.reward) : "–"} <span className="text-xs text-faint">TEST</span>
             </span>
             <span className={cx("hidden text-sm sm:block", soon ? "text-warn" : "text-fg-2")}>

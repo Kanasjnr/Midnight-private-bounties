@@ -40,7 +40,7 @@ export function IssuePage() {
   return (
     <div className="flex max-w-[760px] flex-col gap-8">
       <header className="flex flex-col gap-2">
-        <h1 className="m-0 text-4xl font-semibold tracking-tight">Issue signed records</h1>
+        <h1 className="m-0 text-3xl font-semibold tracking-tight">Issue signed records</h1>
         <p className="m-0 text-muted">
           For banks, schools, communities: anyone whose word a poster trusts. You sign a record about someone; they can prove what it
           shows to win a signed-record bounty, and only the poster ever reads it.
