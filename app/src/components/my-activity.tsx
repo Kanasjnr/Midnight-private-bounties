@@ -4,8 +4,9 @@
 //     worded for the role this browser has in each;
 //   - what only this browser can read: new applications in its inboxes, and
 //     messages from the other side of its chats.
-// One store per set of inputs, shared by the top bar's badge and the page.
-import { useMemo } from "react";
+// One store per set of inputs. Shown by the bell in the top bar.
+import { useMemo, useState } from "react";
+import { Bell } from "lucide-react";
 import { useWallet } from "@/hooks/use-wallet";
 import { useLocalSet, useLocalValue } from "~/hooks/use-local-value";
 import { cleanTitle } from "~/lib/sanitize";
@@ -209,45 +210,78 @@ function time(ms: number): string {
   return d.toLocaleString(undefined, today ? { hour: "2-digit", minute: "2-digit" } : { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-export function MyActivity() {
+/**
+ * The bell in the top bar. Its count is what's new since it was last opened;
+ * opening it marks everything read, and keeps this opening's new items
+ * highlighted until it closes.
+ */
+export function Notifications() {
   const { events, unread, seen, markRead } = useMyActivity();
+  const [openedAfter, setOpenedAfter] = useState<number | null>(null);
+  const open = openedAfter !== null;
+  const close = () => setOpenedAfter(null);
+  const toggle = () => {
+    if (open) return close();
+    setOpenedAfter(seen);
+    if (unread > 0) markRead();
+  };
+  const isNew = (e: Personal) => e.at > (openedAfter ?? seen);
+
   return (
-    <section aria-labelledby="activity" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 id="activity" className="m-0 text-xl font-semibold">
-          Your activity
-        </h2>
+    <div className="relative" onKeyDown={(e) => e.key === "Escape" && close()}>
+      <button
+        type="button"
+        aria-label={unread > 0 ? `Notifications, ${unread} new` : "Notifications"}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={toggle}
+        className={cx("relative inline-flex size-8 items-center justify-center rounded-md border border-line-strong text-muted transition-colors hover:border-line-hover hover:bg-raised hover:text-fg", open && "bg-raised text-fg")}
+      >
+        <Bell aria-hidden="true" className="size-4" />
         {unread > 0 && (
-          <button type="button" onClick={markRead} className="text-sm font-medium text-link hover:text-link-hover">
-            Mark {unread} as read
-          </button>
+          <span aria-hidden="true" className="absolute -top-1.5 -right-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-private px-1 text-[10px] font-semibold text-on-fg tabular">
+            {unread > 9 ? "9+" : unread}
+          </span>
         )}
-      </div>
-      {events === null ? (
-        <span className="text-sm text-faint">Reading your bounties' history…</span>
-      ) : events.length === 0 ? (
-        <p className="m-0 rounded-[10px] border border-line px-5 py-4 text-sm text-muted">
-          Nothing yet. Posts, applications, messages and payouts on your bounties show up here.
-        </p>
-      ) : (
-        <ol className="m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-[10px] border border-line p-0">
-          {events.slice(0, 30).map((e) => (
-            <li key={e.key}>
-              <a href={e.href} className={cx("flex items-start gap-3 px-5 py-3 text-inherit no-underline transition-colors hover:bg-surface", e.at > seen && "bg-surface")}>
-                <span aria-hidden="true" className={cx("mt-2 size-1.5 shrink-0 rounded-full", e.at > seen ? (e.private ? "bg-private" : "bg-fg") : "bg-transparent")} />
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="flex items-baseline justify-between gap-4">
-                    <span className={cx("text-sm", e.at > seen ? "font-medium text-fg" : "text-fg-2")}>{e.text}</span>
-                    <span className="shrink-0 text-xs text-faint tabular">{time(e.at)}</span>
-                  </span>
-                  <span className="truncate text-[13px] text-muted">{e.detail}</span>
-                </span>
-              </a>
-            </li>
-          ))}
-        </ol>
+      </button>
+      {open && (
+        // Clicking anywhere outside the panel lands on this backdrop and closes it.
+        <div aria-hidden="true" className="fixed inset-0 z-10" onClick={close} />
       )}
-      <span className="text-xs text-faint">Messages and applications are decrypted in this browser. Nothing here is shared.</span>
-    </section>
+      {open && (
+        <div role="dialog" aria-label="Notifications" className="absolute right-0 z-20 mt-2 flex w-[380px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[10px] border border-line bg-surface shadow-pop">
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <span className="text-sm font-medium">Notifications</span>
+            <span className="text-xs text-faint">Only you can see these</span>
+          </div>
+          <div className="max-h-[440px] overflow-y-auto">
+            {events === null ? (
+              <p className="m-0 px-4 py-6 text-sm text-faint">Reading your bounties' history…</p>
+            ) : events.length === 0 ? (
+              <p className="m-0 px-4 py-8 text-center text-sm text-muted">
+                Nothing yet. Applications, messages and payouts on your bounties show up here.
+              </p>
+            ) : (
+              <ol className="m-0 flex list-none flex-col divide-y divide-line-soft p-0">
+                {events.slice(0, 40).map((e) => (
+                  <li key={e.key}>
+                    <a href={e.href} onClick={close} className={cx("flex items-start gap-3 px-4 py-3 text-inherit no-underline transition-colors hover:bg-raised", isNew(e) && "bg-raised/60")}>
+                      <span aria-hidden="true" className={cx("mt-1.5 size-1.5 shrink-0 rounded-full", isNew(e) ? (e.private ? "bg-private" : "bg-fg") : "bg-transparent")} />
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="flex items-baseline justify-between gap-3">
+                          <span className={cx("text-[13px]", isNew(e) ? "font-medium text-fg" : "text-fg-2")}>{e.text}</span>
+                          <span className="shrink-0 text-[11px] text-faint tabular">{time(e.at)}</span>
+                        </span>
+                        <span className="truncate text-xs text-muted">{e.detail}</span>
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

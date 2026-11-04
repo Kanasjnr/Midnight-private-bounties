@@ -87,9 +87,9 @@ and pass on retry).
   connect. Preprod and Mainnet indexers need a Blockfrost key, so there the
   wallet's indexer is still needed. The board card copies a link
   (`#/board/<network>/<code>`) that opens the board for anyone.
-- **Your activity** on My bounties: what happened to the bounties this
-  browser posted, applied for, works on or solved, newest first, with unread
-  ones marked (and a dot on the My bounties tab). Chain events come from the
+- **Notifications** (the bell in the top bar): what happened to the bounties
+  this browser posted, applied for, works on or solved, newest first. The bell
+  counts what's new since it was last opened; opening it marks them read. Chain events come from the
   indexer's history of each contract (spike Q14, `src/midnight/activity.ts`):
   each state is compared with the one before to name the bounty, then kept to
   this browser's bounties and worded for its role there. New applications and

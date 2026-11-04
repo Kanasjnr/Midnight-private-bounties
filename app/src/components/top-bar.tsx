@@ -7,7 +7,7 @@ import { amount, short, SPECK_PER_DUST, STAR_PER_NIGHT, units } from "~/lib/form
 import { href, type Route } from "~/router";
 import { useSession } from "~/session";
 import { Button, cx, Dot, LinkButton } from "~/components/ui";
-import { useMyActivity } from "~/components/my-activity";
+import { Notifications } from "~/components/my-activity";
 
 const NETWORK_NAMES: Record<string, string> = { undeployed: "Local devnet", preview: "Preview", preprod: "Preprod", mainnet: "Mainnet" };
 
@@ -31,14 +31,13 @@ export function TopBar({ route }: { route: Route }) {
   const { status, networkId, requestedNetworkId } = useWallet();
   const { locked } = useMidnightProviders();
   const { items } = useSession();
-  const { unread } = useMyActivity();
   const connected = status === "connected";
   const ready = connected && !locked;
   const toRead = items.filter((b) => b.needs !== null).length;
 
-  const tabs: { route: Route; label: string; badge?: number; dot?: boolean }[] = [
+  const tabs: { route: Route; label: string; badge?: number }[] = [
     { route: { name: "board" }, label: "Board" },
-    { route: { name: "mine" }, label: "My bounties", badge: toRead, dot: unread > 0 },
+    { route: { name: "mine" }, label: "My bounties", badge: toRead },
   ];
 
   return (
@@ -56,11 +55,6 @@ export function TopBar({ route }: { route: Route }) {
                 className={cx("inline-flex h-8 items-center gap-2 rounded-md px-2.5 text-sm font-medium no-underline transition-colors hover:text-fg", on ? "bg-chip text-fg" : "text-muted")}
               >
                 {t.label}
-                {t.dot && !t.badge && (
-                  <span className="size-1.5 rounded-full bg-private">
-                    <span className="sr-only">New activity</span>
-                  </span>
-                )}
                 {t.badge ? <span className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-fg px-1 text-[11px] font-medium text-on-fg tabular">{t.badge}</span> : null}
               </a>
             );
@@ -72,6 +66,7 @@ export function TopBar({ route }: { route: Route }) {
             {networkName(connected ? networkId : requestedNetworkId)}
           </span>
           {connected && <Balances />}
+          {ready && <Notifications />}
           {connected ? <Account /> : <LinkButton href={href({ name: "setup" })} variant="ghost">Connect wallet</LinkButton>}
           <LinkButton href={href(ready ? { name: "post" } : { name: "setup" })}>Post a bounty</LinkButton>
         </div>

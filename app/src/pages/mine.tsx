@@ -7,7 +7,6 @@ import { useSession } from "~/session";
 import { BountyTable } from "~/components/bounty-table";
 import { Loading } from "~/pages/board";
 import { Amount, LinkButton } from "~/components/ui";
-import { MyActivity } from "~/components/my-activity";
 
 // What needs doing first, then what's waiting, then what's done.
 const ORDER: Record<Need, number> = { review: 0, read: 1, deliver: 2, collect: 3, refund: 4 };
@@ -47,8 +46,6 @@ export function MinePage() {
         </div>
         <LinkButton href={href({ name: "post" })}>Post a bounty</LinkButton>
       </header>
-
-      <MyActivity />
 
       <section aria-labelledby="posted" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
