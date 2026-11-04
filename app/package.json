@@ -15,8 +15,8 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "5.3.0",
     "@fontsource-variable/geist-mono": "5.3.0",
-    "@fontsource-variable/urbanist": "5.3.0",
     "@midnight-ntwrk/dapp-connector-api": "4.0.1",
     "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
     "@midnight-ntwrk/midnight-js-dapp-connector-proof-provider": "4.1.1",
