@@ -22,7 +22,7 @@ export function PostStart() {
   return (
     <div className="flex flex-col gap-8">
       <header className="flex max-w-[640px] flex-col gap-2">
-        <h1 className="m-0 text-4xl font-semibold tracking-tight">Post a bounty</h1>
+        <h1 className="m-0 text-3xl font-semibold tracking-tight">Post a bounty</h1>
         <p className="m-0 text-muted">Pick by who decides the work is done: you, or a proof.</p>
       </header>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-4">
@@ -117,7 +117,7 @@ function PostWorkForm() {
     <div className="flex flex-wrap-reverse items-start gap-12">
       <aside aria-label="Summary" className="flex max-w-[380px] min-w-0 flex-[1_1_300px] flex-col gap-6">
         <Panel className="flex flex-col gap-3 p-5">
-          <span className="text-[13px] font-semibold text-muted">You are posting</span>
+          <span className="text-[13px] font-medium text-muted">You are posting</span>
           <span className="text-lg leading-snug font-semibold break-words">{shownTitle}</span>
           <Amount value={parsedReward !== null ? amount(parsedReward) : "–"} className="text-3xl" />
           <ul className="m-0 flex list-disc flex-col gap-1.5 pl-4.5 text-sm text-fg-2 marker:text-faint">
@@ -167,10 +167,10 @@ function PostWorkForm() {
               </div>
             </Field>
             <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-              <legend className="mb-2 text-sm font-semibold">Who works on it</legend>
+              <legend className="mb-2 text-sm font-medium">Who works on it</legend>
               <div role="group" className="flex overflow-hidden rounded-lg border border-line">
                 {([[false, "You pick an applicant"], [true, "First to claim"]] as const).map(([v, label], i) => (
-                  <button key={label} type="button" aria-pressed={firstToClaim === v} onClick={() => setFirstToClaim(v)} className={cx("h-11 flex-1 text-sm font-semibold transition-colors", i > 0 && "border-l border-line", firstToClaim === v ? "bg-fg text-page" : "bg-surface text-fg-2 hover:bg-raised")}>
+                  <button key={label} type="button" aria-pressed={firstToClaim === v} onClick={() => setFirstToClaim(v)} className={cx("h-11 flex-1 text-sm font-medium transition-colors", i > 0 && "border-l border-line", firstToClaim === v ? "bg-fg text-page" : "bg-surface text-fg-2 hover:bg-raised")}>
                     {label}
                   </button>
                 ))}
@@ -191,7 +191,7 @@ function PostWorkForm() {
               Work nobody delivered comes back to you after the deadline.
             </span>
             <fieldset className="m-0 flex flex-col gap-3 border-0 p-0">
-              <legend className="mb-2 text-sm font-semibold">Arbiter (optional)</legend>
+              <legend className="mb-2 text-sm font-medium">Arbiter (optional)</legend>
               <Input aria-label="Arbiter ID" className="font-mono text-[13px]" placeholder="Their arbiter ID, from their board card. Leave empty for none." value={arbiter} onChange={(e) => setArbiter(e.target.value)} />
               {arbiterHex && <DaysField id="appeal" label="Time to appeal" value={appeal} onChange={setAppeal} />}
               <span className="text-[13px] text-muted">An arbiter's only power is to overturn your rejection. Without one, a rejection reopens the work for someone else.</span>

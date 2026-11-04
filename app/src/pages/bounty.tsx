@@ -98,7 +98,7 @@ function Heading({ b, mine }: { b: BountyView; mine?: boolean }) {
           <Chip>Yours</Chip>
         </div>
       )}
-      <h1 className="m-0 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">{cleanTitle(b.title) || "Untitled"}</h1>
+      <h1 className="m-0 text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">{cleanTitle(b.title) || "Untitled"}</h1>
       <p className="m-0 text-lg whitespace-pre-wrap text-fg-2">{cleanDetails(b.details) || "No question was given."}</p>
       {hidden && <p className="m-0 text-[13px] text-warn">This listing had hidden characters (text direction or zero-width marks), removed here.</p>}
     </header>
@@ -215,7 +215,7 @@ function SolverView({ b }: { b: BountyView }) {
 
       {solvedByMe && b.status === Status.SOLVED ? (
         <Panel tone="ok" className="flex flex-col gap-1 px-5 py-4">
-          <span className="font-semibold">You solved it</span>
+          <span className="font-medium">You solved it</span>
           <span className="text-sm text-fg-2">
             {b.reward !== null ? `${amount(b.reward)} TEST` : "The reward"} went to your shielded balance. It shows in your wallet once it
             has synced.
@@ -229,7 +229,7 @@ function SolverView({ b }: { b: BountyView }) {
         <WalletGate doing="solve it">
         <section aria-labelledby="answer-label" className="flex flex-col gap-3">
           <div className={cx("flex flex-col rounded-lg border bg-surface", err === null ? "border-ok-line" : "border-line")}>
-            <label id="answer-label" htmlFor="answer" className="px-4 pt-3 text-sm font-semibold">
+            <label id="answer-label" htmlFor="answer" className="px-4 pt-3 text-sm font-medium">
               Your answer
             </label>
             <Textarea

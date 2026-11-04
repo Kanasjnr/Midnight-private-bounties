@@ -115,7 +115,7 @@ function WorkDetail({ v }: { v: WorkView }) {
               {v.assignedToMe && <Chip className="border-private/40 text-private">You're on it</Chip>}
               {v.arbiterMe && <Chip>You're the arbiter</Chip>}
             </div>
-            <h1 className="m-0 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">{title}</h1>
+            <h1 className="m-0 text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">{title}</h1>
             <p className="m-0 text-lg whitespace-pre-wrap text-fg-2">{cleanDetails(v.details) || "No description was given."}</p>
             {(hadHiddenCharacters(v.title) || hadHiddenCharacters(v.details)) && (
               <p className="m-0 text-[13px] text-warn">This listing had hidden characters (text direction or zero-width marks), removed here.</p>
@@ -577,7 +577,7 @@ function Applications({ v }: { v: WorkView }) {
         <span className="text-sm text-faint">Checking for applications…</span>
       ) : all.length + extra.length === 0 ? (
         <Panel className="flex flex-col gap-1 px-5 py-4 text-sm">
-          <span className="font-semibold">No applications yet</span>
+          <span className="font-medium">No applications yet</span>
           <span className="text-muted">Share the link below. When someone applies, it shows up here.</span>
         </Panel>
       ) : (
@@ -627,7 +627,7 @@ function Contact({ v, a, assignable, contributor = false }: { v: WorkView; a: In
   return (
     <Panel tone={contributor ? "navy" : "plain"} className="flex flex-col gap-3 px-5 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <span className="font-semibold">
+        <span className="font-medium">
           {cleanTitle(a.name) || (intro ? "The person who claimed it" : "No name given")}
           {contributor && <span className="ml-2 text-[13px] font-normal text-private">{intro ? "Working on it" : "Assigned"}</span>}
         </span>

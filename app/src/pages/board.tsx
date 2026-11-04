@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Search } from "lucide-react";
+import { Eye, Lock, Search } from "lucide-react";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { workCircuits } from "~/midnight/work-api";
 import { useWallet } from "@/hooks/use-wallet";
@@ -110,7 +110,7 @@ function Board({ address }: { address: string }) {
     <div className="flex flex-col gap-8">
       <header className="flex flex-wrap items-end justify-between gap-x-12 gap-y-6">
         <div className="flex max-w-[640px] flex-col gap-2">
-          <h1 className="m-0 text-4xl leading-tight font-semibold tracking-tight">Bounties</h1>
+          <h1 className="m-0 text-3xl leading-tight font-semibold tracking-tight">Bounties</h1>
           <p className="m-0 text-base text-muted">
             Work you can claim and deliver, and questions a proof can check. Every reward is held by the contract and paid out
             privately.
@@ -130,9 +130,9 @@ function Board({ address }: { address: string }) {
           <Dot tone="private" />
           <span role="status" className="flex-[1_1_320px]">
             {needs.length === 1 ? "One thing needs you: " : "A few things need you: "}
-            <strong className="font-semibold">{needs.length === 1 ? needs[0] : `${needs.slice(0, -1).join(", ")} and ${needs[needs.length - 1]}`}</strong>.
+            <strong className="font-medium">{needs.length === 1 ? needs[0] : `${needs.slice(0, -1).join(", ")} and ${needs[needs.length - 1]}`}</strong>.
           </span>
-          <a href={href({ name: "mine" })} className="font-semibold text-link no-underline hover:text-link-hover">
+          <a href={href({ name: "mine" })} className="font-medium text-link no-underline hover:text-link-hover">
             Open my bounties
           </a>
         </Panel>
@@ -148,7 +148,7 @@ function Board({ address }: { address: string }) {
                 aria-pressed={kind === k}
                 onClick={() => setKind(k)}
                 className={cx(
-                  "-mb-px inline-flex h-11 items-center gap-1.5 border-b-2 text-[15px] font-semibold transition-colors",
+                  "-mb-px inline-flex h-11 items-center gap-1.5 border-b-2 text-[15px] font-medium transition-colors",
                   kind === k ? "border-fg text-fg" : "border-transparent text-muted hover:text-fg",
                 )}
               >
@@ -219,7 +219,7 @@ function Board({ address }: { address: string }) {
               <SideRow label="Refund ready" value={`${amount(sumOf((b) => b.needs === "refund"))} TEST`} />
               <SideRow label="Earned here" value={`${amount(sumOf((b) => b.earnedHere))} TEST`} last />
             </dl>
-            <a href={href({ name: "mine" })} className="mt-1.5 text-sm font-semibold text-link no-underline hover:text-link-hover">
+            <a href={href({ name: "mine" })} className="mt-1.5 text-sm font-medium text-link no-underline hover:text-link-hover">
               My bounties
             </a>
           </section>
@@ -245,7 +245,7 @@ function TwoKinds() {
           </h2>
           <p className="m-0 text-muted">Pick by who decides the work is done.</p>
         </div>
-        <a href={href({ name: "post" })} className="font-semibold text-link no-underline hover:text-link-hover">
+        <a href={href({ name: "post" })} className="font-medium text-link no-underline hover:text-link-hover">
           Post a bounty
         </a>
       </div>
@@ -314,7 +314,7 @@ export function ProvingCard() {
           ? "Every post, solve and refund is proved on this machine, so your answers and keys never leave it."
           : "The wallet, and any service it proves with, sees your answers and keys."}
       </span>
-      <a href={href({ name: "setup" })} className="text-sm font-semibold text-link no-underline hover:text-link-hover">
+      <a href={href({ name: "setup" })} className="text-sm font-medium text-link no-underline hover:text-link-hover">
         Setup
       </a>
     </section>
@@ -350,7 +350,7 @@ function BoardCard({ address }: { address: string }) {
           <CopyButton text={arbiter} label="Copy your arbiter ID" />
         </span>
       )}
-      <a href={href({ name: "setup" })} className="text-sm font-semibold text-link no-underline hover:text-link-hover">
+      <a href={href({ name: "setup" })} className="text-sm font-medium text-link no-underline hover:text-link-hover">
         Change board
       </a>
     </section>
@@ -358,10 +358,14 @@ function BoardCard({ address }: { address: string }) {
 }
 
 export function WhatTheChainSees() {
+  const pub = ["The bounty: title, question, reward, deadline", "A hash of the right answer", "Its status: open, solved or refunded", "The answer, as ciphertext only the poster can open"];
+  const priv = ["Who posted or solved it: each bounty gets a new identity", "The answer itself", "Where the reward went", "Your wallet's keys and this browser's secrets"];
   return (
-    <Panel tone="navy" className="flex flex-wrap gap-x-12 gap-y-8 p-6 sm:p-9">
-      <div className="flex max-w-[420px] flex-[1_1_300px] flex-col gap-2.5">
-        <h2 className="m-0 text-2xl font-semibold tracking-tight">What the chain sees</h2>
+    <section aria-labelledby="chain-sees" className="grid gap-x-12 gap-y-8 border-t border-line pt-10 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      <div className="flex max-w-[380px] flex-col gap-2.5">
+        <h2 id="chain-sees" className="m-0 text-xl font-semibold">
+          What the chain sees
+        </h2>
         <p className="m-0 text-muted">
           Rewards are locked up front and paid by the contract, so nobody has to trust a promise to pay. Who solved a bounty, what
           they answered, and where the money went stay off the public record.
@@ -370,32 +374,36 @@ export function WhatTheChainSees() {
           href="https://github.com/Kanasjnr/Midnight-private-bounties/blob/main/ARCHITECTURE.md#14-privacy-model"
           target="_blank"
           rel="noreferrer"
-          className="font-semibold text-link no-underline hover:text-link-hover"
+          className="text-sm font-medium text-link no-underline hover:text-link-hover"
         >
-          Read the design
+          Read the design →
         </a>
       </div>
-      <div className="grid flex-[999_1_460px] grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-6">
-        <div className="flex flex-col gap-2.5">
-          <span className="text-[13px] font-semibold text-muted">On chain, for anyone</span>
-          <ul className="m-0 flex list-disc flex-col gap-1.5 pl-4.5 text-fg-2 marker:text-faint">
-            <li>The bounty: title, question, reward, deadline</li>
-            <li>A hash of the right answer</li>
-            <li>Its status: open, solved or refunded</li>
-            <li>The answer, as ciphertext only the poster can open</li>
+      <div className="grid gap-6 sm:grid-cols-2">
+        <div className="flex flex-col gap-3">
+          <span className="text-xs font-medium tracking-wide text-faint uppercase">On chain, for anyone</span>
+          <ul className="m-0 flex list-none flex-col gap-2.5 p-0 text-fg-2">
+            {pub.map((t) => (
+              <li key={t} className="flex gap-2.5">
+                <Eye aria-hidden="true" className="mt-1 size-3.5 shrink-0 text-faint" />
+                {t}
+              </li>
+            ))}
           </ul>
         </div>
-        <div className="flex flex-col gap-2.5">
-          <span className="text-[13px] font-semibold text-private">Never on chain</span>
-          <ul className="m-0 flex list-disc flex-col gap-1.5 pl-4.5 text-fg-2 marker:text-faint">
-            <li>Who posted or solved it: each bounty gets a new identity</li>
-            <li>The answer itself</li>
-            <li>Where the reward went</li>
-            <li>Your wallet's keys and this browser's secrets</li>
+        <div className="flex flex-col gap-3">
+          <span className="text-xs font-medium tracking-wide text-private uppercase">Never on chain</span>
+          <ul className="m-0 flex list-none flex-col gap-2.5 p-0 text-fg-2">
+            {priv.map((t) => (
+              <li key={t} className="flex gap-2.5">
+                <Lock aria-hidden="true" className="mt-1 size-3.5 shrink-0 text-private" />
+                {t}
+              </li>
+            ))}
           </ul>
         </div>
       </div>
-    </Panel>
+    </section>
   );
 }
 
@@ -406,12 +414,16 @@ function Welcome() {
   const { deployment } = useSession();
   const next = status !== "connected" ? "Connect a wallet" : locked ? "Unlock this browser's store" : deployment.busy === "joining" ? null : "Join a board";
   return (
-    <div className="flex flex-col gap-10">
-      <header className="flex max-w-[720px] flex-col gap-4 pt-6">
-        <h1 className="m-0 text-4xl leading-tight font-semibold tracking-tight sm:text-5xl">Bounties that pay when the proof checks out</h1>
-        <p className="m-0 text-lg text-muted">
-          Post a question with a reward. A solver proves their answer is right before anything is paid, the contract pays them in
-          the same transaction, and only you can read the answer.
+    <div className="flex flex-col gap-16">
+      <header className="flex max-w-[680px] flex-col gap-5 pt-8 sm:pt-14">
+        <span className="inline-flex w-fit items-center gap-2 rounded-full border border-line px-2.5 py-0.5 text-[13px] text-muted">
+          <Lock aria-hidden="true" className="size-3 text-private" />
+          Private by default, on Midnight
+        </span>
+        <h1 className="m-0 text-[34px] leading-[1.1] font-semibold tracking-tight sm:text-[44px]">Bounties that pay when the proof checks out</h1>
+        <p className="m-0 text-[17px] text-muted">
+          Post work or a question with a reward. The contract holds the money and pays out only when the work is approved or the
+          answer is proved right, and nothing on chain says who was paid.
         </p>
         <div className="flex flex-wrap items-center gap-4 pt-2">
           {next ? <LinkButton href={href({ name: "setup" })} size="lg">{next}</LinkButton> : <span className="text-muted">Joining the board…</span>}

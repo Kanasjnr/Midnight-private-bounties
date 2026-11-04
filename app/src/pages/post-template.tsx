@@ -94,7 +94,7 @@ export function TemplatePostForm({ t }: { t: Template }) {
     <div className="flex flex-wrap-reverse items-start gap-12">
       <aside aria-label="Summary" className="flex max-w-[380px] min-w-0 flex-[1_1_300px] flex-col gap-6">
         <Panel className="flex flex-col gap-3 p-5">
-          <span className="text-[13px] font-semibold text-muted">You are posting</span>
+          <span className="text-[13px] font-medium text-muted">You are posting</span>
           <span className="text-lg leading-snug font-semibold break-words">{shownTitle}</span>
           <Amount value={parsedReward !== null ? amount(parsedReward) : "–"} className="text-3xl" />
           <span className="text-sm text-muted">Paid to whoever proves: {checks}.</span>
@@ -171,10 +171,10 @@ export function TemplatePostForm({ t }: { t: Template }) {
               </div>
             </Field>
             <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-              <legend className="mb-2 text-sm font-semibold">Deadline</legend>
+              <legend className="mb-2 text-sm font-medium">Deadline</legend>
               <div role="group" className="flex overflow-hidden rounded-lg border border-line">
                 {PRESETS.map(([label, secs], i) => (
-                  <button key={label} type="button" aria-pressed={preset === secs} onClick={() => setPreset(secs)} className={cx("h-11 flex-1 text-sm font-semibold transition-colors", i > 0 && "border-l border-line", preset === secs ? "bg-fg text-page" : "bg-surface text-fg-2 hover:bg-raised")}>
+                  <button key={label} type="button" aria-pressed={preset === secs} onClick={() => setPreset(secs)} className={cx("h-11 flex-1 text-sm font-medium transition-colors", i > 0 && "border-l border-line", preset === secs ? "bg-fg text-page" : "bg-surface text-fg-2 hover:bg-raised")}>
                     {label}
                   </button>
                 ))}
