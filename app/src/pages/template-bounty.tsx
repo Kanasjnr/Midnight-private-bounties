@@ -25,7 +25,7 @@ import {
 import { href } from "~/router";
 import { useSession, type TemplateSession } from "~/session";
 import { Countdown } from "~/components/countdown";
-import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, Field, Input, Panel, StatusText, Visibility } from "~/components/ui";
+import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, Field, Input, Panel, StatusText, Visibility, Prose } from "~/components/ui";
 import { WalletGate } from "~/components/wallet-gate";
 
 export function TemplateBounty({ slot, v }: { slot: TemplateSession; v: TemplateView }) {
@@ -50,7 +50,7 @@ export function TemplateBounty({ slot, v }: { slot: TemplateSession; v: Template
               {v.mine && <Chip>Yours</Chip>}
             </div>
             <h1 className="m-0 text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">{title}</h1>
-            <p className="m-0 text-lg whitespace-pre-wrap text-fg-2">{cleanDetails(v.details) || "No question was given."}</p>
+            <Prose text={cleanDetails(v.details) || "No question was given."} />
             {(hadHiddenCharacters(v.title) || hadHiddenCharacters(v.details)) && (
               <p className="m-0 text-[13px] text-warn">This listing had hidden characters (text direction or zero-width marks), removed here.</p>
             )}
@@ -88,8 +88,8 @@ export function TemplateBounty({ slot, v }: { slot: TemplateSession; v: Template
                 ["Poster", v.mine ? "You" : "Anonymous"],
                 [
                   "Bounty ID",
-                  <span className="inline-flex items-center gap-1 font-mono text-[13px]">
-                    {short(v.idHex, 8, 6)}
+                  <span className="inline-flex items-center gap-1 font-mono text-[13px] whitespace-nowrap">
+                    {short(v.idHex, 6, 4)}
                     <CopyButton text={v.idHex} label="Copy bounty ID" />
                   </span>,
                 ],

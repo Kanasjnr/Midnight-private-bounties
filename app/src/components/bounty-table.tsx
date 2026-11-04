@@ -48,7 +48,7 @@ export function BountyTable({
                 <span className="text-fg-2 sm:hidden"> · {b.reward !== null ? `${amount(b.reward)} TEST` : ""}</span>
               </span>
             </span>
-            <span className="hidden text-right font-mono text-[15px] font-medium whitespace-nowrap sm:block">
+            <span className="hidden text-right text-[15px] font-medium whitespace-nowrap tabular sm:block">
               {b.reward !== null ? amount(b.reward) : "–"} <span className="text-xs text-faint">TEST</span>
             </span>
             <span className={cx("hidden text-sm sm:block", soon ? "text-warn" : "text-fg-2")}>

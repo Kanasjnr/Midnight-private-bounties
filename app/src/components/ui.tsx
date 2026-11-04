@@ -196,3 +196,41 @@ export function Visibility({ pub, priv, privLabel = "Private" }: { pub: ReactNod
     </div>
   );
 }
+
+/**
+ * A bounty's text as the poster wrote it: blank lines split paragraphs, and
+ * runs of lines starting with "- " or "* " are lists. Plain text only, so
+ * nothing the poster writes can become markup.
+ */
+export function Prose({ text, className }: { text: string; className?: string }) {
+  const bullet = /^\s*[-*]\s+/;
+  // Each paragraph becomes runs of plain lines and list lines, in order.
+  const blocks = text.split(/\n\s*\n/).flatMap((para) => {
+    const runs: { list: boolean; lines: string[] }[] = [];
+    for (const line of para.split("\n")) {
+      if (!line.trim()) continue;
+      const list = bullet.test(line);
+      const last = runs[runs.length - 1];
+      if (last && last.list === list) last.lines.push(list ? line.replace(bullet, "") : line);
+      else runs.push({ list, lines: [list ? line.replace(bullet, "") : line] });
+    }
+    return runs;
+  });
+  return (
+    <div className={cx("flex max-w-[68ch] flex-col gap-3 text-[15px] leading-7 text-fg-2", className)}>
+      {blocks.map((b, i) =>
+        b.list ? (
+          <ul key={i} className="-mt-1.5 m-0 flex list-disc flex-col gap-0.5 pl-5 marker:text-faint">
+            {b.lines.map((l, j) => (
+              <li key={j}>{l}</li>
+            ))}
+          </ul>
+        ) : (
+          <p key={i} className="m-0 whitespace-pre-wrap">
+            {b.lines.join("\n")}
+          </p>
+        ),
+      )}
+    </div>
+  );
+}

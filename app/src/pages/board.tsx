@@ -73,19 +73,19 @@ function BrowsingNote() {
   const { locked } = useMidnightProviders();
   const what = status !== "connected" ? "Connect a wallet" : locked ? "Unlock this browser's store" : "Join this board";
   return (
-    <Panel className="flex flex-wrap items-center justify-between gap-4 px-4.5 py-3.5">
-      <span className="text-muted">You're browsing. {what} to post, solve or apply.</span>
-      <LinkButton href={href({ name: "setup" })} variant="ghost">
-        {what}
-      </LinkButton>
-    </Panel>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[10px] border border-line bg-surface px-4 py-2.5 text-sm">
+      <Eye aria-hidden="true" className="size-4 text-faint" />
+      <span className="text-muted">You're browsing read-only.</span>
+      <a href={href({ name: "setup" })} className="font-medium text-link no-underline hover:text-link-hover">
+        {what} to post, solve or apply →
+      </a>
+    </div>
   );
 }
 
 function Board({ address }: { address: string }) {
-  const { items, now, hidden, work } = useSession();
+  const { items, now, hidden, work, network } = useSession();
   const canAct = useCanAct();
-  const { networkId } = useWallet();
   const [kind, setKind] = useState<Kind | "all">("all");
   const [phase, setPhase] = useState<"active" | "done">("active");
   const [sort, setSort] = useState<"newest" | "reward" | "ending">("newest");
@@ -117,7 +117,7 @@ function Board({ address }: { address: string }) {
         </div>
         <dl aria-label="Board totals" className="m-0 grid grid-cols-3 rounded-lg border border-line">
           <Stat label="In escrow" value={<Amount value={amount(t.inEscrow)} />} />
-          <Stat label="Active" value={<span className="font-mono font-medium">{t.active}</span>} border />
+          <Stat label="Active" value={<span className="tabular font-medium">{t.active}</span>} border />
           <Stat label="Paid out" value={<Amount value={amount(t.paidOut)} />} border />
         </dl>
       </header>
@@ -151,7 +151,7 @@ function Board({ address }: { address: string }) {
                   kind === k ? "border-fg text-fg" : "border-transparent text-muted hover:text-fg",
                 )}
               >
-                {label} <span className="font-mono text-xs text-faint">{count(k)}</span>
+                {label} <span className="text-xs font-normal text-faint tabular">{count(k)}</span>
               </button>
             ))}
           </div>
@@ -193,7 +193,7 @@ function Board({ address }: { address: string }) {
             footer={
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3 text-[13px] text-faint">
                 <span>
-                  Showing {rows.length} · read live from the {networkName(networkId)} indexer
+                  Showing {rows.length} · read live from the {networkName(network)} indexer
                   {!work.address && " · this board has no reviewed-work contract yet"}
                 </span>
                 {hiddenHere > 0 && (
@@ -207,7 +207,7 @@ function Board({ address }: { address: string }) {
         </section>
 
         <aside className="flex max-w-[320px] min-w-0 flex-[1_1_280px] flex-col gap-7">
-          <section aria-labelledby="you-title" className="flex flex-col gap-1">
+          {canAct && <section aria-labelledby="you-title" className="flex flex-col gap-1">
             <h2 id="you-title" className="m-0 mb-2 text-[15px] font-semibold">
               You
             </h2>
@@ -221,8 +221,8 @@ function Board({ address }: { address: string }) {
             <a href={href({ name: "mine" })} className="mt-1.5 text-sm font-medium text-link no-underline hover:text-link-hover">
               My bounties
             </a>
-          </section>
-          <ProvingCard />
+          </section>}
+          {canAct && <ProvingCard />}
           <BoardCard address={address} />
         </aside>
       </div>
@@ -283,7 +283,7 @@ function SideRow({ label, value, last = false }: { label: string; value: string;
   return (
     <>
       <dt className={cx("py-2 text-muted", !last && "border-b border-line-soft")}>{label}</dt>
-      <dd className={cx("m-0 py-2 text-right font-mono", !last && "border-b border-line-soft")}>{value}</dd>
+      <dd className={cx("m-0 py-2 text-right tabular", !last && "border-b border-line-soft")}>{value}</dd>
     </>
   );
 }

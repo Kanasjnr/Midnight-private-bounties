@@ -24,7 +24,7 @@ import { TemplateBounty } from "~/pages/template-bounty";
 import { canBrowse } from "~/midnight/read-only";
 import { WalletGate } from "~/components/wallet-gate";
 import { Countdown } from "~/components/countdown";
-import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, LinkButton, Panel, StatusText, Textarea, Visibility } from "~/components/ui";
+import { Amount, Button, Chip, CopyButton, cx, Dot, Facts, LinkButton, Panel, StatusText, Textarea, Visibility, Prose } from "~/components/ui";
 
 export function BountyPage({ route }: { route: Extract<Route, { name: "bounty" }> }) {
   const { status } = useWallet();
@@ -99,7 +99,7 @@ function Heading({ b, mine }: { b: BountyView; mine?: boolean }) {
         </div>
       )}
       <h1 className="m-0 text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">{cleanTitle(b.title) || "Untitled"}</h1>
-      <p className="m-0 text-lg whitespace-pre-wrap text-fg-2">{cleanDetails(b.details) || "No question was given."}</p>
+      <Prose text={cleanDetails(b.details) || "No question was given."} />
       {hidden && <p className="m-0 text-[13px] text-warn">This listing had hidden characters (text direction or zero-width marks), removed here.</p>}
     </header>
   );
@@ -126,8 +126,8 @@ function Details({ b, extra }: { b: BountyView; extra?: [ReactNode, ReactNode][]
           ...(extra ?? []),
           [
             "Bounty ID",
-            <span className="inline-flex items-center gap-1 font-mono text-[13px]">
-              {short(b.idHex, 8, 6)}
+            <span className="inline-flex items-center gap-1 font-mono text-[13px] whitespace-nowrap">
+              {short(b.idHex, 6, 4)}
               <CopyButton text={b.idHex} label="Copy bounty ID" />
             </span>,
           ],
