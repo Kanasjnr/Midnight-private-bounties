@@ -320,7 +320,7 @@ export async function submitWork(contract: WorkContract, providers: WorkProvider
 }
 
 /** The poster's key for one bounty, checked against the key it was posted with. */
-async function checkedPosterKey(state: Ledger, address: ContractAddress, id: Uint8Array, posterSeed: Uint8Array): Promise<bigint> {
+export async function checkedPosterKey(state: Ledger, address: ContractAddress, id: Uint8Array, posterSeed: Uint8Array): Promise<bigint> {
   const key = await posterKeyFor(posterSeed, address, id);
   const mine = pureCircuits.posterPublicKey(key);
   const posted = state.works.lookup(id).posterPk;
@@ -385,12 +385,12 @@ const bigToHex = (x: bigint) => x.toString(16);
 
 /**
  * An application code for one bounty: the application encrypted to the
- * poster's key for it, with a fresh ephemeral key. The bounty ID is bound in
+ * poster's key for it, under the key `e` (fresh by default; the chat passes
+ * the applicant's per-bounty contact key, so the code also opens the chat). The bounty ID is bound in
  * both the key and the AES associated data, so a code can't be replayed on
  * another bounty.
  */
-export async function makeApplication(v: WorkView, posterPk: { x: bigint; y: bigint }, app: Application): Promise<string> {
-  const e = randomScalar();
+export async function makeApplication(v: WorkView, posterPk: { x: bigint; y: bigint }, app: Application, e: bigint = randomScalar()): Promise<string> {
   const ePk = pureCircuits.posterPublicKey(e);
   const key = await aesKey(pureCircuits.applicationKey(e, posterPk, v.id), "encrypt");
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -402,8 +402,13 @@ export async function makeApplication(v: WorkView, posterPk: { x: bigint; y: big
   return `${CODE_PREFIX}${b64url(new TextEncoder().encode(head))}.${b64url(iv)}.${b64url(ct)}`;
 }
 
+/** An opened application, with the applicant's public key from the code (the other end of the chat). */
+export interface OpenedApplication extends Application {
+  contact: { x: bigint; y: bigint };
+}
+
 /** The poster opens an application code for one of their bounties. Throws with a readable reason. */
-export async function openApplication(state: Ledger, address: ContractAddress, v: WorkView, posterSeed: Uint8Array, code: string): Promise<Application> {
+export async function openApplication(state: Ledger, address: ContractAddress, v: WorkView, posterSeed: Uint8Array, code: string): Promise<OpenedApplication> {
   const parts = code.trim().replace(/\s+/g, "").split(".");
   if (parts.length !== 4 || `${parts[0]}.` !== CODE_PREFIX) throw new Error("That isn't an application code");
   let head: { b?: unknown; x?: unknown; y?: unknown };
@@ -429,6 +434,7 @@ export async function openApplication(state: Ledger, address: ContractAddress, v
     plan: typeof body.plan === "string" ? body.plan : "",
     name: typeof body.name === "string" ? body.name : "",
     links: Array.isArray(body.links) ? body.links.filter((l): l is string => typeof l === "string") : [],
+    contact: { x: hexToBig(head.x), y: hexToBig(head.y) },
   };
 }
 

@@ -178,7 +178,7 @@ function PostWorkForm() {
               <span className="text-[13px] text-muted">
                 {firstToClaim
                   ? "For small, well-defined tasks. Anyone can claim it at once; if a claim goes nowhere, you can release it before they submit."
-                  : "Applicants send you an application code with their plan. You read it here and assign one of them."}
+                  : "Applications with a plan arrive on this bounty's page, where you can chat with each applicant and assign one of them."}
               </span>
             </fieldset>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-4">
