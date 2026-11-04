@@ -10,6 +10,7 @@ import { bountyViews } from "@/midnight/private-bounties-api";
 import { ledger as answerLedger } from "@/midnight/contract";
 import { workLedger, workViews } from "~/midnight/work-api";
 import { templateViews, TEMPLATES } from "~/midnight/verified-api";
+import { amount } from "~/lib/format";
 
 export type FeedKind = "answer" | "work" | "factor" | "signed";
 
@@ -39,6 +40,8 @@ export interface ActivityEvent {
   idHex: string | null;
   title: string | null;
   reward: bigint | null;
+  /** The circuit that ran, or "deploy". */
+  circuit: string;
   text: string;
   at: number;
 }
@@ -83,7 +86,7 @@ export function eventsFrom(steps: Step[]): ActivityEvent[] {
   const out: ActivityEvent[] = [];
   steps.forEach((s, i) => {
     const before = steps[i + 1];
-    const base = { kind: s.kind, address: s.address, at: s.at };
+    const base = { kind: s.kind, address: s.address, at: s.at, circuit: s.circuit };
     if (s.circuit === "deploy") {
       out.push({ ...base, key: `${s.hash}:deploy`, idHex: null, title: null, reward: null, text: s.kind === "answer" ? "Board started" : `${label(s.kind)} added to the board` });
       return;
@@ -150,3 +153,52 @@ export async function boardActivity(indexerUrl: string, contracts: { kind: FeedK
   const all = await Promise.all(contracts.map((c) => fetchSteps(indexerUrl, c.kind, c.address).then(eventsFrom, () => [] as ActivityEvent[])));
   return all.flat().sort((a, b) => b.at - a.at).slice(0, max);
 }
+
+// ---- one browser's view of the history ----
+
+/** How this browser stands to a bounty: it posted it, works on it, applied for it, or solved it. */
+export type Role = "poster" | "worker" | "applicant" | "solver";
+
+/** What each circuit means to someone in each role. Missing ones say nothing new to that role. */
+const WORDS: Record<Role, Record<string, string>> = {
+  poster: {
+    postBounty: "You posted it",
+    postWork: "You posted it",
+    refund: "You took the reward back",
+    claim: "Someone claimed your work",
+    assign: "You assigned it",
+    release: "You released the claim",
+    approve: "You approved the work",
+    reject: "You rejected the work",
+    overturn: "The arbiter overturned your rejection",
+    reopen: "Your work was reopened",
+    collect: "The contributor was paid",
+  },
+  worker: {
+    claim: "You claimed it",
+    assign: "You were assigned",
+    release: "Your claim was released",
+    submit: "You delivered the work",
+    approve: "Your work was approved",
+    reject: "Your work was rejected",
+    overturn: "The rejection was overturned",
+    reopen: "It was reopened",
+    collect: "You were paid",
+    refund: "The poster took the reward back",
+  },
+  applicant: {
+    assign: "The poster assigned someone",
+    reopen: "It was reopened",
+    refund: "The poster took the reward back",
+  },
+  solver: { submit: "You solved it and were paid" },
+};
+
+/** The chain event in this browser's words, or null when it says nothing new to it. */
+export function wording(e: ActivityEvent, role: Role): string | null {
+  const circuit = e.circuit;
+  if (role === "poster" && circuit === "submit") return e.kind === "work" ? "Work was delivered: review it" : "Solved: the answer is ready to read";
+  if (role === "poster" && (circuit === "postBounty" || circuit === "postWork")) return `You posted it${e.reward !== null ? ` with ${amount(e.reward)} TEST` : ""}`;
+  return WORDS[role][circuit] || null;
+}
+

@@ -10,7 +10,7 @@ import { posterKeyFor } from "../../../contract/keys.js";
 import { witnesses } from "../../../contract/witnesses.js";
 import { freshCoin, newPrivateState, tokenColor } from "@/midnight/private-bounties-api";
 import { factorAnswer } from "~/midnight/verified-api";
-import { eventsFrom, snapshot, type Step } from "~/midnight/activity";
+import { eventsFrom, snapshot, wording, type Step } from "~/midnight/activity";
 
 const ADDRESS = sampleContractAddress();
 const COLOR = tokenColor(sampleContractAddress());
@@ -46,5 +46,9 @@ describe("activity feed", () => {
     ]);
     // Without the step before it, the oldest action is context only.
     expect(eventsFrom(steps.slice(0, 2)).map((e) => e.text)).toEqual(["Solved and paid"]);
+
+    // The same history in the words of the poster and of the solver.
+    expect(events.map((e) => wording(e, "poster"))).toEqual(["Solved: the answer is ready to read", "You posted it with 100 TEST", null]);
+    expect(events.map((e) => wording(e, "solver"))).toEqual(["You solved it and were paid", null, null]);
   });
 });

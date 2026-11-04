@@ -15,7 +15,6 @@ import { BountyTable } from "~/components/bounty-table";
 import { networkName } from "~/components/top-bar";
 import { Amount, Button, CopyButton, cx, Dot, LinkButton, Panel } from "~/components/ui";
 import { useCanAct } from "~/components/wallet-gate";
-import { ActivityCard } from "~/components/activity";
 import { canBrowse } from "~/midnight/read-only";
 import { parseBoardCode } from "~/pages/setup";
 
@@ -223,7 +222,6 @@ function Board({ address }: { address: string }) {
               My bounties
             </a>
           </section>
-          <ActivityCard />
           <ProvingCard />
           <BoardCard address={address} />
         </aside>
