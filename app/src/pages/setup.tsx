@@ -247,7 +247,7 @@ function ProofStep({ ready, recheck }: { ready: boolean; recheck: () => void }) 
   return (
     <>
       <span className="text-sm text-muted">Start the proof server on this machine. It needs Docker.</span>
-      <div className="flex items-center gap-2 rounded-lg border border-line bg-page py-1 pr-1 pl-3">
+      <div className="flex items-center gap-2 rounded-md border border-line bg-surface py-1 pr-1 pl-3">
         <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[13px] whitespace-nowrap text-fg-2">{PROOF_COMMAND}</code>
         <CopyButton text={PROOF_COMMAND} label="Copy command" />
       </div>
@@ -279,7 +279,7 @@ function DustStep() {
         <div className="flex flex-col gap-2 text-sm">
           <span className="text-muted">On the local devnet, fund this wallet from the examples repo:</span>
           {dustAddress ? (
-            <div className="flex items-center gap-2 rounded-lg border border-line bg-page py-1 pr-1 pl-3">
+            <div className="flex items-center gap-2 rounded-md border border-line bg-surface py-1 pr-1 pl-3">
               <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[13px] whitespace-nowrap text-fg-2">yarn fund:wallet {dustAddress}</code>
               <CopyButton text={`yarn fund:wallet ${dustAddress}`} label="Copy command" />
             </div>

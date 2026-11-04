@@ -23,7 +23,7 @@ export function BountyTable({
   footer?: ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-line bg-surface">
+    <div className="overflow-hidden rounded-[10px] border border-line">
       <div className={cx(ROW, "border-b border-line px-5 py-2.5 text-xs font-medium tracking-wider text-faint uppercase")}>
         <span>Bounty</span>
         <span className="hidden text-right sm:block">Reward</span>

@@ -149,7 +149,7 @@ export function TemplatePostForm({ t }: { t: Template }) {
                     </datalist>
                   </Field>
                   <Field id="field" label="Field to check">
-                    <select id="field" value={field} onChange={(e) => setField(Number(e.target.value))} className="h-11 rounded-lg border border-line bg-surface px-3 text-fg">
+                    <select id="field" value={field} onChange={(e) => setField(Number(e.target.value))} className="h-10 rounded-md border border-line-strong bg-page px-2.5 text-fg">
                       {fields.map((f, i) => (
                         <option key={f} value={i + 1}>
                           {f}
@@ -165,16 +165,16 @@ export function TemplatePostForm({ t }: { t: Template }) {
               </>
             )}
             <Field id="reward" label="Reward" aside={short ? <MintButton /> : undefined} hint={<span className="text-[13px] text-muted">{rewardBalance !== null ? `You hold ${amount(rewardBalance)} TEST. ` : ""}At least {amount(state.minReward)}.</span>}>
-              <div className="flex h-11 items-center rounded-lg border border-line bg-surface pr-3.5 transition-colors focus-within:border-focus hover:border-line-hover">
-                <input id="reward" inputMode="numeric" value={reward} onChange={(e) => setReward(e.target.value)} className="h-full min-w-0 flex-1 border-0 bg-transparent px-3.5 font-mono text-fg outline-none" />
+              <div className="flex h-10 items-center rounded-md border border-line-strong bg-page pr-3 transition-[border-color,box-shadow] focus-within:border-focus focus-within:ring-3 focus-within:ring-focus/15 hover:border-line-hover">
+                <input id="reward" inputMode="numeric" value={reward} onChange={(e) => setReward(e.target.value)} className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 tabular text-fg outline-none" />
                 <span className="text-sm text-muted">TEST</span>
               </div>
             </Field>
             <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
               <legend className="mb-2 text-sm font-medium">Deadline</legend>
-              <div role="group" className="flex overflow-hidden rounded-lg border border-line">
-                {PRESETS.map(([label, secs], i) => (
-                  <button key={label} type="button" aria-pressed={preset === secs} onClick={() => setPreset(secs)} className={cx("h-11 flex-1 text-sm font-medium transition-colors", i > 0 && "border-l border-line", preset === secs ? "bg-fg text-page" : "bg-surface text-fg-2 hover:bg-raised")}>
+              <div role="group" className="flex gap-0.5 rounded-lg bg-chip p-0.5">
+                {PRESETS.map(([label, secs]) => (
+                  <button key={label} type="button" aria-pressed={preset === secs} onClick={() => setPreset(secs)} className={cx("h-9 flex-1 rounded-md text-sm font-medium transition-colors", preset === secs ? "bg-page text-fg shadow-sm ring-1 ring-line" : "text-muted hover:text-fg")}>
                     {label}
                   </button>
                 ))}
@@ -196,7 +196,7 @@ export function TemplatePostForm({ t }: { t: Template }) {
               <h1 className="m-0 text-3xl font-semibold tracking-tight">Review</h1>
               <p className="m-0 text-muted">This goes on chain exactly as shown, and can't be edited or removed later.</p>
             </div>
-            <dl className="m-0 grid grid-cols-[160px_minmax(0,1fr)] rounded-lg border border-line bg-surface text-sm">
+            <dl className="m-0 grid grid-cols-[160px_minmax(0,1fr)] overflow-hidden rounded-[10px] border border-line text-sm">
               {(
                 [
                   ["Template", TEMPLATES[t].name],

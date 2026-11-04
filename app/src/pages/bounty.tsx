@@ -310,7 +310,7 @@ function PosterView({ b }: { b: BountyView }) {
       aside={
         <>
           <Details b={b} extra={[["Listed", "On the public board"]]} />
-          <section aria-labelledby="key-title" className="flex flex-col gap-2 rounded-lg border border-line p-4 text-sm">
+          <section aria-labelledby="key-title" className="flex flex-col gap-2 rounded-[10px] border border-line p-4 text-sm">
             <h2 id="key-title" className="m-0 text-[15px] font-semibold">
               Key for this bounty
             </h2>

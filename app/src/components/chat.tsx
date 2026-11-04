@@ -138,7 +138,7 @@ export function ChatBox({ ch, other, beforeSend }: { ch: Channel; other: string;
   };
 
   return (
-    <div className="flex flex-col rounded-lg border border-line bg-surface">
+    <div className="flex flex-col rounded-[10px] border border-line bg-surface">
       <div className="flex max-h-[420px] min-h-28 flex-col gap-3 overflow-y-auto px-4 py-4">
         {messages === null ? (
           <span className="text-sm text-faint">Opening the conversation…</span>

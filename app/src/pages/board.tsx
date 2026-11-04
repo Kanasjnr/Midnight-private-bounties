@@ -115,7 +115,7 @@ function Board({ address }: { address: string }) {
             privately.
           </p>
         </div>
-        <dl aria-label="Board totals" className="m-0 grid grid-cols-3 rounded-lg border border-line">
+        <dl aria-label="Board totals" className="m-0 grid grid-cols-3 rounded-[10px] border border-line">
           <Stat label="In escrow" value={<Amount value={amount(t.inEscrow)} />} />
           <Stat label="Active" value={<span className="tabular font-medium">{t.active}</span>} border />
           <Stat label="Paid out" value={<Amount value={amount(t.paidOut)} />} border />
@@ -157,7 +157,7 @@ function Board({ address }: { address: string }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex h-9 flex-[1_1_260px] items-center gap-2 rounded-lg border border-line bg-surface px-3 text-faint transition-colors hover:border-line-hover focus-within:border-focus">
+            <label className="flex h-9 flex-[1_1_260px] items-center gap-2 rounded-md border border-line-strong bg-page px-3 text-faint transition-[border-color,box-shadow] hover:border-line-hover focus-within:border-focus focus-within:ring-3 focus-within:ring-focus/15">
               <Search aria-hidden="true" className="size-4" />
               <span className="sr-only">Search bounties</span>
               <input
@@ -168,14 +168,14 @@ function Board({ address }: { address: string }) {
                 className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm text-fg outline-none"
               />
             </label>
-            <label className="flex h-9 items-center gap-2 rounded-lg border border-line px-2.5 text-sm text-muted transition-colors hover:border-line-hover">
+            <label className="flex h-9 items-center gap-2 rounded-md border border-line-strong px-2.5 text-sm text-muted transition-colors hover:border-line-hover">
               Status
               <select value={phase} onChange={(e) => setPhase(e.target.value as "active" | "done")} className="border-0 bg-transparent text-fg outline-none">
                 <option value="active">Active</option>
                 <option value="done">Done</option>
               </select>
             </label>
-            <label className="flex h-9 items-center gap-2 rounded-lg border border-line px-2.5 text-sm text-muted transition-colors hover:border-line-hover">
+            <label className="flex h-9 items-center gap-2 rounded-md border border-line-strong px-2.5 text-sm text-muted transition-colors hover:border-line-hover">
               Sort
               <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="border-0 bg-transparent text-fg outline-none">
                 <option value="newest">Newest</option>
@@ -262,7 +262,7 @@ function TwoKinds() {
 
 export function KindCard({ to, title, foot, children }: { to: Route; title: string; foot: string; children: ReactNode }) {
   return (
-    <a href={href(to)} className="flex flex-col gap-2.5 rounded-lg border border-line bg-surface p-5.5 text-inherit no-underline transition-colors hover:border-line-hover">
+    <a href={href(to)} className="group flex flex-col gap-2.5 rounded-[10px] border border-line bg-surface p-5.5 text-inherit no-underline transition-colors hover:border-line-hover hover:bg-raised">
       <span className="text-[17px] font-semibold">{title}</span>
       <span className="text-muted">{children}</span>
       <span className="mt-auto border-t border-line-soft pt-3 text-[13px] text-faint">{foot}</span>
@@ -293,7 +293,7 @@ export function ProvingCard() {
   const local = proving.mode === "local";
   const server = useProofServer(local ? proving.proofServerUrl : null);
   return (
-    <section aria-labelledby="prover-title" className="flex flex-col gap-2 rounded-lg border border-line p-4">
+    <section aria-labelledby="prover-title" className="flex flex-col gap-2 rounded-[10px] border border-line p-4">
       <h2 id="prover-title" className="m-0 text-[15px] font-semibold">
         Proving
       </h2>
@@ -330,7 +330,7 @@ function BoardCard({ address }: { address: string }) {
   const link = `${window.location.origin}${window.location.pathname}${href({ name: "open-board", network, code })}`;
   const arbiter = work.ps ? toHex(workCircuits.arbiterId(work.ps.sk)) : null;
   return (
-    <section aria-labelledby="board-title" className="flex flex-col gap-2 rounded-lg border border-line p-4">
+    <section aria-labelledby="board-title" className="flex flex-col gap-2 rounded-[10px] border border-line p-4">
       <h2 id="board-title" className="m-0 text-[15px] font-semibold">
         This board
       </h2>
