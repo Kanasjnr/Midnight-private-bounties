@@ -1,0 +1,146 @@
+{
+  "at": "2026-11-03T16:16:27.281Z",
+  "node": "v22.19.0",
+  "kind": 4515,
+  "editKind": 34515,
+  "relays": [
+    {
+      "url": "wss://relay.damus.io",
+      "connect": "ok",
+      "accept": {
+        "ok": false,
+        "reason": "banned: too many rate-limit violations, try again later"
+      },
+      "ackMs": 311,
+      "liveMs": null,
+      "history": false,
+      "ids": [
+        "590137721cf43e776dcc4b778a6b4771023388ebe7b059cb41e9ea11fd688f0d"
+      ],
+      "sizes": {
+        "1KiB": "banned: too many rate-limit violations, try again later",
+        "4KiB": "banned: too many rate-limit violations, try again later",
+        "16KiB": "banned: too many rate-limit violations, try again later",
+        "64KiB": "banned: too many rate-limit violations, try again later"
+      },
+      "edit": "rejected: banned: too many rate-limit violations, try again later",
+      "burst": 0,
+      "burstReason": "banned: too many rate-limit violations, try again later",
+      "thread": "9c63e3fa077fc1821d78634610ca60fb1591c7137500317e66cf807268bef356"
+    },
+    {
+      "url": "wss://nos.lol",
+      "connect": "ok",
+      "accept": {
+        "ok": true
+      },
+      "ackMs": 157,
+      "liveMs": 257,
+      "history": true,
+      "ids": [
+        "ffbae448d09e3096c5929608a2a2678984d9e4a87abb5f88dc7b0688cfaa4864"
+      ],
+      "sizes": {
+        "1KiB": "ok",
+        "4KiB": "ok",
+        "16KiB": "ok",
+        "64KiB": "invalid: event too large: 65953"
+      },
+      "edit": "v2",
+      "burst": 10,
+      "thread": "7f08be2337c30a9b20ef3bda14593b1d33ba2fa3074e634e5e6009d651fab70e"
+    },
+    {
+      "url": "wss://relay.primal.net",
+      "connect": "ok",
+      "accept": {
+        "ok": true
+      },
+      "ackMs": 207,
+      "liveMs": 253,
+      "history": true,
+      "ids": [
+        "3f5191570b501ec1bb75b98871b64f049e5501e7217058c475453f6a9d75d13b"
+      ],
+      "sizes": {
+        "1KiB": "ok",
+        "4KiB": "ok",
+        "16KiB": "ok",
+        "64KiB": "ok"
+      },
+      "edit": "v2",
+      "burst": 10,
+      "thread": "1e9970d32e0103d001f8b9577513d8d5917764b0c444f611e99d6bc4e0ac70f4"
+    },
+    {
+      "url": "wss://relay.nostr.band",
+      "connect": "timeout"
+    },
+    {
+      "url": "wss://relay.snort.social",
+      "connect": "ok",
+      "accept": {
+        "ok": true
+      },
+      "ackMs": 145,
+      "liveMs": 153,
+      "history": true,
+      "ids": [
+        "ff9423f437194abbf489d05c44346bd606f3ed8b6888e1be49e5f4d806738625"
+      ],
+      "sizes": {
+        "1KiB": "ok",
+        "4KiB": "ok",
+        "16KiB": "ok",
+        "64KiB": "ok"
+      },
+      "edit": "v2",
+      "burst": 10,
+      "thread": "89827ee9c1aa5a93f63ffda028c1a5f267ca90036cd9bef13bb2cb5961db0501"
+    },
+    {
+      "url": "wss://offchain.pub",
+      "connect": "ok",
+      "accept": {
+        "ok": true
+      },
+      "ackMs": 376,
+      "liveMs": 478,
+      "history": true,
+      "ids": [
+        "6129aa6f95de2c0839c212673e542fdf1c5d46fc09fd76fc3c42cdad5cb657fe"
+      ],
+      "sizes": {
+        "1KiB": "ok",
+        "4KiB": "ok",
+        "16KiB": "Policy violated and pubkey is not in our web of trust.",
+        "64KiB": "invalid: event too large: 65953"
+      },
+      "edit": "v2",
+      "burst": 10,
+      "thread": "24c888525ea37a332ba94a80d2ebd1210fa5a60b11c524eba5e551f01767829b"
+    },
+    {
+      "url": "wss://nostr.mom",
+      "connect": "ok",
+      "accept": {
+        "ok": true
+      },
+      "ackMs": 198,
+      "liveMs": 238,
+      "history": true,
+      "ids": [
+        "ad6bb2d2445d5697aaeca7ad880c73e31ae3ca5f495041f6e524ac079252bf7c"
+      ],
+      "sizes": {
+        "1KiB": "ok",
+        "4KiB": "ok",
+        "16KiB": "ok",
+        "64KiB": "invalid: event too large: 65953"
+      },
+      "edit": "v2",
+      "burst": 10,
+      "thread": "5acf8a9cba2e63af7f84fd466a6f6dce77e39ff2ac41a762f0538c9fdc903b30"
+    }
+  ]
+}
