@@ -7,7 +7,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { deployContract, submitCallTx } from '@midnight-ntwrk/midnight-js-contracts';
-import { type ContractAddress } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
+import { type ContractAddress } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime';
 import {
   encryptionKeys,
   freshCoin,
@@ -17,15 +17,14 @@ import {
   tokenColor,
   waitForShieldedBalance,
   type TokenColor,
-} from '@midnight-ntwrk/example-coins';
-import { resolveWallet } from '@midnight-ntwrk/example-fast-sync';
+} from './coins.js';
 import type { EnvironmentConfiguration } from '@midnight-ntwrk/testkit-js';
 import pino from 'pino';
 import { WebSocket } from 'ws';
 
 import { getConfig } from '../config.js';
-import { MidnightWalletProvider, syncWallet } from '../wallet.js';
-import { buildProviders, type BountyProviders } from '../providers.js';
+import { MidnightWalletProvider, resolveWallet, syncWallet, waitForNightThenDust } from '../wallet.js';
+import { buildProviders, ledgerState, type BountyProviders } from '../providers.js';
 import {
   CompiledBountyFactorContract,
   CompiledTestTokenContract,
@@ -41,6 +40,8 @@ globalThis.WebSocket = WebSocket as unknown as typeof globalThis.WebSocket;
 
 const logger = pino({ level: process.env['LOG_LEVEL'] ?? 'info', transport: { target: 'pino-pretty' } });
 const config = getConfig();
+const NETWORK = process.env['MIDNIGHT_NETWORK'] ?? 'local';
+const REMOTE = NETWORK !== 'local';
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
@@ -65,7 +66,7 @@ describe(`bounty_factor on ${config.networkId}`, () => {
   const posterKey = randomScalar();
 
   async function call(p: Party, label: string, circuitId: string, args: unknown[], answer: bigint[] = NO_ANSWER) {
-    await p.prov.privateStateProvider.set(p.psId, createBountyPrivateState(p.sk, answer));
+    await p.prov.privateStateProvider.forContract(address).set(p.psId, createBountyPrivateState(p.sk, answer));
     const t0 = Date.now();
     const tx = await (submitCallTx as any)(p.prov, {
       compiledContract: CompiledBountyFactorContract,
@@ -91,10 +92,12 @@ describe(`bounty_factor on ${config.networkId}`, () => {
       proofServer: config.proofServer,
     };
     const make = async (role: 'ALICE' | 'BOB', name: string): Promise<Party> => {
-      const setup = resolveWallet(config.networkId === 'undeployed' ? 'local' : config.networkId, role);
-      const wallet = await MidnightWalletProvider.build(logger, env, setup.secret, { fastSync: setup.fastSync });
+      const setup = resolveWallet(NETWORK, role);
+      const wallet = await MidnightWalletProvider.build(logger, env, setup.secret);
       await wallet.start();
-      await syncWallet(logger, wallet.wallet, 600_000);
+      await syncWallet(logger, wallet.wallet, REMOTE ? 60 * 60_000 : 600_000);
+      // Synced is not funded: on a remote network, wait for NIGHT and register it for DUST.
+      if (REMOTE) await waitForNightThenDust(logger, wallet.wallet, wallet.unshieldedKeystore, env, config.faucet, { label: setup.role });
       const prov = buildProviders(wallet, bountyFactorZkConfigPath, config, `pf-${name}`);
       return { name, wallet, prov, psId: `PF${name}`, sk: new Uint8Array(randomBytes(32)) };
     };
@@ -112,7 +115,6 @@ describe(`bounty_factor on ${config.networkId}`, () => {
       args: [color.bytes, MIN_REWARD, MIN_WINDOW],
     });
     address = bounty.deployTxData.public.contractAddress;
-    for (const p of [alice, bob]) p.prov.privateStateProvider.setContractAddress(address);
 
     const keys = encryptionKeys(alice.wallet, bob.wallet);
     for (const [to, amount] of [[alice, REWARD], [bob, STAKE]] as const) {
@@ -146,7 +148,7 @@ describe(`bounty_factor on ${config.networkId}`, () => {
     expect(after - before).toEqual(REWARD);
 
     const s = await alice.prov.publicDataProvider.queryContractState(address);
-    const l = bountyFactorLedger(s!.data);
+    const l = bountyFactorLedger(ledgerState(s));
     expect(l.bounties.lookup(id).status).toEqual(Status.SOLVED);
     expect(l.listings.lookup(id)).toMatchObject({ title: TITLE, details: DETAILS, reward: REWARD });
     expect(pure.decrypt(l.deliveries.lookup(id), posterKey, id)).toEqual([P, Q, 0n, 0n]);
