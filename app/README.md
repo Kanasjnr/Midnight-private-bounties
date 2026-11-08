@@ -87,12 +87,23 @@ and pass on retry).
   connect. Preprod and Mainnet indexers need a Blockfrost key, so there the
   wallet's indexer is still needed. The board card copies a link
   (`#/board/<network>/<code>`) that opens the board for anyone.
-- **Recent activity** on the board, from the indexer's history of each
-  contract (spike Q14, `src/midnight/activity.ts`): the last 15 actions per
-  contract, each state decoded and compared with the one before to name the
-  bounty it touched. It shows only what's public (titles, rewards, statuses),
-  never who acted, and refreshes every 30 seconds. A state from an older
-  contract version ends that contract's history there.
+- **Notifications** (the bell in the top bar): what happened to the bounties
+  this browser posted, applied for, works on or solved, newest first. The bell
+  counts what's new since it was last opened; opening it marks them read. Chain events come from the
+  indexer's history of each contract (spike Q14, `src/midnight/activity.ts`):
+  each state is compared with the one before to name the bounty, then kept to
+  this browser's bounties and worded for its role there. New applications and
+  messages come from the inboxes and chats, decrypted here, so only this
+  browser sees them. A state from an older contract version ends that
+  contract's history there.
+- **Chat for reviewed work** over public Nostr relays (spike Q15,
+  `src/midnight/chat.ts`, `src/lib/relays.ts`, `src/components/chat.tsx`).
+  Applying sends the encrypted application to the bounty's inbox, so it
+  appears on the poster's page, and opens a private chat between the two.
+  Messages are encrypted with a key only the poster and that applicant can
+  compute, written to five relays and merged by event ID, and cached in the
+  browser still encrypted. Reply and edit are messages too; only the author's
+  edits count. Pasting an application code still works when relays are down.
 - **Local proving by default** (spike Q10), as in `../ui`. Wallet proving is
   one click away in setup, with the warning shown wherever it applies.
 - **No effects.** Anything from outside React (the clock, the URL, browser
@@ -105,7 +116,7 @@ and pass on retry).
 
 ## Not yet
 
-Contributor profiles beyond what an application includes (and verified GitHub), messages, the inbox and light mode. Its store is separate from `../ui`'s: a different port is a
+Contributor profiles beyond what an application includes (and verified GitHub), and light mode. Its store is separate from `../ui`'s: a different port is a
 different origin, so keys made on one page don't show on the other.
 
 ## Run

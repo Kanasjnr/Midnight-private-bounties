@@ -38,7 +38,7 @@ export function MinePage() {
     <div className="flex flex-col gap-10">
       <header className="flex flex-wrap items-end justify-between gap-6">
         <div className="flex max-w-[640px] flex-col gap-2">
-          <h1 className="m-0 text-4xl font-semibold tracking-tight">My bounties</h1>
+          <h1 className="m-0 text-3xl font-semibold tracking-tight">My bounties</h1>
           <p className="m-0 text-muted">
             The chain doesn't record who posted, solved or did a bounty. This browser recognizes yours from the keys in its store, and
             remembers the answers it solved.

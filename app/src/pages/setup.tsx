@@ -40,16 +40,15 @@ export function SetupPage() {
     <div className="flex flex-wrap items-start gap-12">
       <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-6">
         <header className="flex flex-col gap-2">
-          <span className="text-sm text-muted">
-            <span className="font-mono text-fg">{doneCount}</span> of 5 done
-          </span>
-          <h1 className="m-0 text-4xl font-semibold tracking-tight">Get set up</h1>
+          <h1 className="m-0 text-3xl font-semibold">Get set up</h1>
           <p className="m-0 max-w-[600px] text-muted">
-            Five things are needed before you can post or solve. Each one is checked live, so you'll see it turn green when it's
-            ready.
+            Five steps before you can post or solve. Each one is checked live. <span className="tabular text-fg-2">{doneCount} of 5</span> done.
           </p>
+          <div aria-hidden="true" className="mt-2 h-1 max-w-[600px] overflow-hidden rounded-full bg-chip">
+            <div className="h-full rounded-full bg-ok transition-[width] duration-500" style={{ width: `${(doneCount / 5) * 100}%` }} />
+          </div>
         </header>
-        <ol className="m-0 flex list-none flex-col gap-3 p-0">
+        <ol className="m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-[10px] border border-line p-0">
           <Step n={1} title="Connect a wallet" state={stepState(0)} note={connected ? `${wallet.wallets.find((w) => w.key === wallet.selectedWalletKey)?.name ?? "Wallet"} on ${networkName(wallet.networkId)}` : "Any wallet with the Midnight DApp Connector"}>
             {!connected && <WalletStep />}
           </Step>
@@ -79,30 +78,30 @@ export function SetupPage() {
         </ol>
         {doneCount === 5 && (
           <Panel tone="ok" className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
-            <span className="font-semibold">You're ready to post and solve.</span>
+            <span className="font-medium">You're ready to post and solve.</span>
             <LinkButton href={href({ name: "board" })}>Go to the board</LinkButton>
           </Panel>
         )}
       </div>
       <aside className="flex max-w-[360px] min-w-0 flex-[1_1_280px] flex-col gap-6 text-sm">
         <section className="flex flex-col gap-2">
-          <h2 className="m-0 text-[15px] font-semibold">Why each one</h2>
+          <h2 className="m-0 text-xs font-medium tracking-wide text-faint uppercase">Why each one</h2>
           <p className="m-0 text-muted">
-            <strong className="text-fg">Wallet.</strong> Pays rewards in, receives payouts, and signs every transaction.
+            <strong className="font-medium text-fg">Wallet.</strong> Pays rewards in, receives payouts, and signs every transaction.
           </p>
           <p className="m-0 text-muted">
-            <strong className="text-fg">Private store.</strong> Holds the keys that let you read answers and claim refunds. It never
+            <strong className="font-medium text-fg">Private store.</strong> Holds the keys that let you read answers and claim refunds. It never
             leaves this browser, and nobody can recover it for you.
           </p>
           <p className="m-0 text-muted">
-            <strong className="text-fg">Proof server.</strong> Makes the zero-knowledge proofs on your machine, so your secrets stay
+            <strong className="font-medium text-fg">Proof server.</strong> Makes the zero-knowledge proofs on your machine, so your secrets stay
             on it.
           </p>
           <p className="m-0 text-muted">
-            <strong className="text-fg">DUST.</strong> Every transaction costs a small fee in DUST. Solvers need nothing else.
+            <strong className="font-medium text-fg">DUST.</strong> Every transaction costs a small fee in DUST. Solvers need nothing else.
           </p>
           <p className="m-0 text-muted">
-            <strong className="text-fg">Board.</strong> One bounty contract that holds the rewards. Join one by its address, or start
+            <strong className="font-medium text-fg">Board.</strong> One bounty contract that holds the rewards. Join one by its address, or start
             your own.
           </p>
         </section>
@@ -114,26 +113,26 @@ export function SetupPage() {
 /** `keepOpen`: show the step's controls even once it's done (the board step, which has more to do after joining). */
 function Step({ n, title, note, state, children, keepOpen = false }: { n: number; title: string; note: string; state: StepState; children?: ReactNode; keepOpen?: boolean }) {
   return (
-    <li className={cx("rounded-lg border bg-surface", state === "current" ? "border-line-hover" : "border-line")}>
+    <li className={cx(state === "current" ? "bg-surface" : "bg-page")}>
       <div className="flex items-start gap-4 px-5 py-4">
         <span
           aria-hidden="true"
           className={cx(
-            "mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full font-mono text-xs",
-            state === "done" ? "bg-ok text-page" : state === "current" ? "border border-fg text-fg" : "border border-line-strong text-faint",
+            "mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium tabular",
+            state === "done" ? "bg-ok text-on-fg" : state === "current" ? "bg-fg text-on-fg" : "bg-chip text-faint",
           )}
         >
-          {state === "done" ? <Check className="size-3.5" strokeWidth={3} /> : n}
+          {state === "done" ? <Check className="size-3" strokeWidth={3} /> : n}
         </span>
-        <span className="flex min-w-0 flex-col">
-          <span className={cx("font-semibold", state === "todo" && "text-muted")}>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className={cx("font-medium", state === "todo" && "text-muted")}>
             {title}
             <span className="sr-only">{state === "done" ? " (done)" : state === "current" ? " (next)" : ""}</span>
           </span>
           <span className="text-sm break-words text-muted">{note}</span>
         </span>
       </div>
-      {children && (state !== "done" || keepOpen) && <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-4 sm:pl-15">{children}</div>}
+      {children && (state !== "done" || keepOpen) && <div className="flex flex-col gap-3 px-5 pb-5 sm:pl-14">{children}</div>}
     </li>
   );
 }
@@ -147,7 +146,7 @@ function WalletStep() {
         <select
           value={requestedNetworkId}
           onChange={(e) => setRequestedNetworkId(e.target.value as NetworkId)}
-          className="h-9 rounded-lg border border-line bg-page px-2 text-fg"
+          className="h-8 rounded-md border border-line-strong bg-page px-2 text-fg"
         >
           {NETWORK_IDS.map((id) => (
             <option key={id} value={id}>
@@ -167,7 +166,7 @@ function WalletStep() {
               <select
                 value={selectedWalletKey ?? ""}
                 onChange={(e) => setSelectedWalletKey(e.target.value)}
-                className="h-9 rounded-lg border border-line bg-page px-2 text-fg"
+                className="h-8 rounded-md border border-line-strong bg-page px-2 text-fg"
               >
                 {wallets.map((w) => (
                   <option key={w.key} value={w.key}>
@@ -206,7 +205,7 @@ function StoreStep() {
         if (value && !weak) unlock(value);
       }}
     >
-      <label htmlFor="pass" className="text-sm font-semibold">
+      <label htmlFor="pass" className="text-sm font-medium">
         Passphrase
       </label>
       <div className="flex flex-wrap gap-2">
@@ -248,7 +247,7 @@ function ProofStep({ ready, recheck }: { ready: boolean; recheck: () => void }) 
   return (
     <>
       <span className="text-sm text-muted">Start the proof server on this machine. It needs Docker.</span>
-      <div className="flex items-center gap-2 rounded-lg border border-line bg-page py-1 pr-1 pl-3">
+      <div className="flex items-center gap-2 rounded-md border border-line bg-surface py-1 pr-1 pl-3">
         <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[13px] whitespace-nowrap text-fg-2">{PROOF_COMMAND}</code>
         <CopyButton text={PROOF_COMMAND} label="Copy command" />
       </div>
@@ -280,7 +279,7 @@ function DustStep() {
         <div className="flex flex-col gap-2 text-sm">
           <span className="text-muted">On the local devnet, fund this wallet from the examples repo:</span>
           {dustAddress ? (
-            <div className="flex items-center gap-2 rounded-lg border border-line bg-page py-1 pr-1 pl-3">
+            <div className="flex items-center gap-2 rounded-md border border-line bg-surface py-1 pr-1 pl-3">
               <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[13px] whitespace-nowrap text-fg-2">yarn fund:wallet {dustAddress}</code>
               <CopyButton text={`yarn fund:wallet ${dustAddress}`} label="Copy command" />
             </div>
@@ -380,7 +379,7 @@ function BoardStep() {
           void deployment.join(parsed.verified);
         }}
       >
-        <label htmlFor="board-address" className="font-semibold">
+        <label htmlFor="board-address" className="font-medium">
           Join a board by its code
         </label>
         <div className="flex flex-wrap gap-2">
@@ -391,7 +390,7 @@ function BoardStep() {
         </div>
       </form>
       <div className="flex flex-col gap-2 border-t border-line-soft pt-4">
-        <span className="font-semibold">Or start a new board</span>
+        <span className="font-medium">Or start a new board</span>
         <span className="text-muted">Two transactions: a test token to pay rewards in, then a bounty contract that pays in it.</span>
         {token.address ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -420,7 +419,7 @@ function BoardStep() {
       </div>
       <span className="border-t border-line-soft pt-4 text-muted">
         Used this board in another browser?{" "}
-        <a href={href({ name: "backup" })} className="font-semibold text-fg">
+        <a href={href({ name: "backup" })} className="font-medium text-fg">
           Restore your backup
         </a>{" "}
         instead, so your keys come with you.
@@ -497,7 +496,7 @@ function ExtraStep({ slot, name, about, busyLabel }: { slot: ExtraSlot; name: st
   }
   return (
     <div className="flex flex-col gap-2 border-b border-line-soft pb-4">
-      <span className="font-semibold">Add {name} to this board</span>
+      <span className="font-medium">Add {name} to this board</span>
       <span className="text-muted">{about}</span>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" disabled={busy || !slot.providers} busy={deployment.busy === busyLabel} onClick={() => void slot.deploy()}>

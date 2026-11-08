@@ -121,7 +121,7 @@ Submitted or approved work is never refundable.
 | Contributor identity | A per-bounty pseudonym from the contributor's own secret, as for posters. Nothing on chain links a contributor's bounties |
 | Contributor profile | Off chain: a name and linked accounts. Each application chooses who sees it: the poster only (default, encrypted in the application), everyone once assigned, or nobody. GitHub is verified by a signed statement in a public gist, checked in the browser; other accounts show as unverified |
 | Poster identity | Anonymous by default, or a verified organization name, so contributors know who is paying. How the name is verified is open 🔬 |
-| Applications | **Decided (2026-11-03): application codes, off chain.** In applicant mode, the app turns an applicant's per-bounty pseudonym, a short plan and an optional profile into a code encrypted to the poster's key for that bounty. The applicant sends it however they like (Discord, GitHub, email), and the poster pastes it into the app to read it and `assign`. The key is the template's pure `applicationKey`: the same key exchange as a submission, bound to the bounty and to "application", so it never equals a submission's key. The app derives an AES-GCM key from it. No contract circuit, no fees, no server; the cost is that applications aren't listed on the board |
+| Applications | **Decided (2026-11-03): application codes, off chain.** In applicant mode, the app turns an applicant's per-bounty pseudonym, a short plan and an optional profile into a code encrypted to the poster's key for that bounty. The applicant sends it however they like (Discord, GitHub, email), and the poster pastes it into the app to read it and `assign`. The key is the template's pure `applicationKey`: the same key exchange as a submission, bound to the bounty and to "application", so it never equals a submission's key. The app derives an AES-GCM key from it. No contract circuit, no fees, no server; the cost is that applications aren't listed on the board. **Updated the same day (Q15):** the app now also sends the code to the bounty's inbox on the Nostr relays, so it appears on the poster's page without copying; pasting a code still works when relays are down. The applicant's key in the code is their per-bounty contact key (from their identity secret), so the code also opens the chat |
 | Windows | Compact has no clock value, only comparisons with block time. Whoever sets a window end passes it as an argument, and the circuit checks it lies between `now + window − slack` and `now + window`: `blockTimeGte(end − window)` and `blockTimeLt(end − window + slack)`. The check has to be two-sided, because the poster sets deliver-by and appeal-by and the contributor sets review-by, and each could cut the other's window short. `slack` is fixed per deployment and must cover the time a call takes to land: up to 2.5 minutes in Q6. **On a devnet (2026-11-02)** the template's tests ran with 15 minutes and window ends a minute short of `now + window`, and every window check held against real block timestamps; calls took 24 to 67 s to land |
 | Claims | `claim` (first to claim) and `assign` (the poster picks an applicant's pseudonym) set deliver-by. Claims close once a full delivery window no longer fits before the final deadline, which the post form should show. `reopen` is its own circuit: anyone can call it on an assignment or a rejection whose window has passed |
 | Review clock | `submit` sets review-by. The poster can approve or reject until then. After it, `collect` works without an approval |
@@ -418,8 +418,8 @@ flowchart TD
 The app (`app/`) has the board (both kinds, all four templates), setup, choosing the kind, posting
 with every template, the bounty page for solver and poster, the reviewed-work page for every role
 (apply with an application code, claim, submit, review, collect, refund, overturn, reopen), My
-bounties, an issuer page that signs records into files, key backup and restore, read-only browsing with no wallet (on networks with a public indexer), and the activity feed (Q14).
-Still to build: profiles beyond what an application carries, and messages ([app/README.md](app/README.md)).
+bounties, an issuer page that signs records into files, key backup and restore, read-only browsing with no wallet (on networks with a public indexer), a personal activity feed (Q14, with new applications and messages decrypted in the browser), and chat for reviewed work over Nostr relays (Q15).
+Still to build: profiles beyond what an application carries ([app/README.md](app/README.md)).
 
 | Screen | Data source | Midnight piece |
 |---|---|---|
@@ -623,7 +623,7 @@ flowchart LR
 | Poster key `b`, solver scalar `e` | Private state, and `e` is discarded after proving |
 | Fees | Paid in DUST |
 | Reviewed work: who is assigned | A per-bounty pseudonym. Their profile only if they share it: with the poster by default, or with everyone once assigned |
-| Reviewed work: the submission and messages | Ciphertext to the poster; messages between the two parties' keys |
+| Reviewed work: the submission and messages | Ciphertext to the poster; messages between the two parties' keys, carried by Nostr relays. Relays see the connecting IP, timing and ciphertext. Each bounty's inbox tag can be computed from the public bounty, so someone reading the chain and the relays can count a bounty's applications (not who sent them, or what they say). A thread's tag can only be computed by its two parties |
 | Reviewed work: actions | Public, like every circuit name: assigned, submitted, approved, rejected, paid |
 | Metadata | Timing and transaction graph. Not hidden by the app |
 
