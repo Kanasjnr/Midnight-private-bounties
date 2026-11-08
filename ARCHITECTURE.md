@@ -677,17 +677,39 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 
 ## 17. Target stack
 
-| Component | Version |
-|---|---|
-| Compact compiler | 0.31.1 (`compact compile +0.31.1 ...`) |
-| `@midnight-ntwrk/compact-runtime` | 0.16.0 (what 0.31.1 output checks for) |
-| midnight-js | 4.1.1 |
-| DApp Connector API | 4.0.1 |
-| `ledger-v8` | 8.1.x |
-| `wallet-sdk-facade` | 4.1.0, pinned (the npm `latest` tag still points to 4.0.1) |
-| Node / indexer / proof server | 1.0.400 / indexer-standalone 4.3.3 / 8.1.0 |
-| Networks | Local, then Preview, then Preprod (the spike devnet ran node 1.0.0, as in the examples' compose) |
-| Block time | Seconds since the Unix epoch (`blockTimeLt`/`Gte` take a `Uint<64>`) |
+Mainnet and Preview moved to Ledger 9 on 2026-11-06 (Preview was reset as a new chain). Preprod
+stays on Ledger 8 for now. **The project targets Ledger 9**; spike Q16 showed the contracts need
+only mechanical changes ([Q16](spike/q16-ledger9/RESULTS.md)). Versions are from the docs'
+compatibility matrix on 2026-11-08.
+
+| Component | Ledger 9 (Mainnet, Preview): the target | Ledger 8 (Preprod, until it upgrades) |
+|---|---|---|
+| Compact compiler | 0.36.0, language 0.28 (`compact compile +0.36.0 ...`) | 0.31.1, language 0.23 |
+| `@midnight-ntwrk/compact-runtime` | 0.21.0 | 0.16.0 |
+| Midnight.js | 5.0.0 (Node 22.12 or later) | 4.1.1 |
+| Wallet SDK | `@midnightntwrk/wallet-sdk` 2.0.0 | 1.2.0 (`wallet-sdk-facade` 4.1.0) |
+| DApp Connector API | 4.1.0 | 4.0.1 |
+| Ledger | `@midnightntwrk/ledger-v9` | `ledger-v8` 8.1.x |
+| Node / indexer / proof server | 2.1.101 / 4.4.101 / 9.0.0 | 1.0.400 / 4.3.302 / 8.1.3 |
+| Networks | Preview, Mainnet. The examples' local devnet isn't on Ledger 9 yet, so network tests run on Preview | Preprod, and the local devnet |
+| Block time | Seconds since the Unix epoch (`blockTimeLt`/`Gte` take a `Uint<64>`) | The same |
+
+What moving to Ledger 9 changes here, from Q16:
+- **Contracts:** an exact `pragma language_version 0.28`; curve scalars cast to `JubjubScalar`
+  (`ecMul` and `ecMulGenerator` take typed scalars); integer literals cast to `Field` where a
+  `Field` argument is expected. Every verifier key changes, and ZKIR v3 prover keys are about 4.5
+  times larger (`submit` 98.6 MB, against 21.6 MB).
+- **JS:** the constructor and impure circuits return Promises; `createCircuitContext` takes one
+  options object; imports move to `/v9` subpaths; providers use `forContract(address)`, a network
+  `config`, and Ledger 9 wallet and node wrappers.
+- **The design doesn't change.** The escrow, the merged payout and refunds work on Preview; our
+  payouts always spend a coin in full, so the open change-write issue
+  ([midnight-ledger#839](https://github.com/midnightntwrk/midnight-ledger/issues/839)) doesn't
+  reach them.
+- **New in Ledger 9 and not used yet:** contract events (the activity feed could read them instead
+  of comparing states), ECDSA over secp256k1 and Keccak (a signed-record issuer could use an
+  ordinary secp256k1 key), and cross-contract calls (unshielded only so far, so they don't help a
+  shielded escrow).
 
 ## 18. Open questions and spike results
 
@@ -708,7 +730,8 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q12 | Can a solver's coin be zero-value? | ✅ Answered | Yes: a solver holding none of the reward token submitted with a zero-value coin, was paid in full, and the payout passed the Q2 leak checks. Solvers don't need the token, and the contracts accept a zero-value solver coin (the reward must still be non-zero). [Results](spike/q2-escrow/RESULTS.md) |
 | Q13 | Reviewed work: can the contract enforce an exclusive claim window and a review clock with block-time comparisons only, keep the collect unlinkable, and let an arbiter overturn a rejection? | ✅ Works on a devnet | The contract passed 18 simulator tests: two-sided window checks, silence pays, collect merges a fresh coin first, arbiter overturn, refund. It found two gaps: squatting and rewards locked if nobody collects. Both are fixed in the template, `bounty_reviewed_work` (`release` and the collect-by limit), which passes 25 simulator tests and 5 devnet tests (2026-11-02): applicant mode end to end with the Q2 leak checks, silence pays on real block time, first to claim with `release`, and the collect-by refund. A wallet run is still to do. [Results](spike/q13-reviewed-work/RESULTS.md), devnet test `src/test/bounty_reviewed_work.test.ts` |
 | Q14 | Can the UI read a contract's history (activity, post times, paid amounts) from the indexer? | ✅ Answered | Yes: `contract(address) { actions(limit) }` on the Preview indexer lists every action with its circuit name, block timestamp (in milliseconds) and the state after it. It doesn't say which bounty changed (compare states), and it doesn't page by offset. Post time and amount are simpler written into `listings` at post time, which they now are (section 7). [Results](spike/q14-indexer-history/RESULTS.md) |
-| Q15 | Can bounty chat run over public Nostr relays? | ✅ Answered | Yes: five of seven relays took our events, delivered them live in 150 to 480 ms, returned them by thread tag, and kept only the newer version of an edit. Every one took 4 KiB; some refused 16 or 64 KiB, one banned the IP. `nostr-tools` adds 16.6 KB gzipped. Retention over days still to check. [Results](spike/q15-nostr-chat/RESULTS.md) |
+| Q15 | Can bounty chat run over public Nostr relays? | ✅ Answered | Yes: five of seven relays took our events, delivered them live in 150 to 480 ms, returned them by thread tag, and kept only the newer version of an edit. Every one took 4 KiB; some refused 16 or 64 KiB, one banned the IP. `nostr-tools` adds 16.6 KB gzipped. After 19 hours four of the five relays still had the events and one had dropped them, so the app also keeps them in the browser; a week still to check. [Results](spike/q15-nostr-chat/RESULTS.md) |
+| Q16 | Does the preimage bounty work on Ledger 9 (compiler 0.36.0, Midnight.js 5)? | ✅ Yes | On Preview, the 0.36.0 build deployed, escrowed a reward, paid a solver with the merged coin in one transaction (142 s end to end; the poster decrypted), and refunded after the deadline (89 s). Contract changes are mechanical (pragma, `JubjubScalar` and `Field` casts); the JS API and key sizes change more. [Results](spike/q16-ledger9/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 
