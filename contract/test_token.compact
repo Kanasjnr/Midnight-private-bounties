@@ -2,7 +2,7 @@
 // Anyone can mint it: it carries no value. The bounty contracts only check a
 // coin's color, so no cross-contract call is needed.
 
-pragma language_version 0.23;
+pragma language_version 0.28;
 import CompactStandardLibrary;
 
 export circuit mint(amount: Uint<64>, nonce: Bytes<32>, recipient: ZswapCoinPublicKey): [] {

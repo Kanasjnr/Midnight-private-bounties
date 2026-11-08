@@ -15,7 +15,7 @@
 // zk-loan attestation, say) can't be passed off as a record. The escrow,
 // deadline and refund logic is the same as bounty_preimage.compact's.
 
-pragma language_version 0.23;
+pragma language_version 0.28;
 import CompactStandardLibrary;
 import "escrow" prefix Escrow_;
 import "deadline" prefix Deadline_;

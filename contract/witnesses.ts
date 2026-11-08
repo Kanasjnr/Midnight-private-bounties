@@ -6,7 +6,7 @@
 // doesn't declare (only bounty_signed_record reads `signature` and
 // `getSchnorrReduction`).
 
-import { type JubjubPoint, type WitnessContext } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
+import { type JubjubPoint, type WitnessContext } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime';
 
 /** A Schnorr signature on Jubjub, as zk-loan's schnorr module expects it. */
 export type SchnorrSignature = { announcement: JubjubPoint; response: bigint };
