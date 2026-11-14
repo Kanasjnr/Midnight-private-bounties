@@ -37,15 +37,14 @@ export function boardAddresses(board: BoardAddresses): string[] {
 
 /**
  * Exports every contract of the board this account has private state for,
- * encrypted with the store's passphrase. Give it a provider of its own:
- * midnight-js scopes a provider by the last address set on it.
+ * encrypted with the store's passphrase. Each contract's states are reached
+ * through `forContract(address)` (Midnight.js 5).
  */
 export async function makeBackup(provider: PrivateStateProvider, network: string, board: BoardAddresses, token: string | null): Promise<Backup> {
   const states: Record<string, PrivateStateExport> = {};
   for (const address of boardAddresses(board)) {
-    provider.setContractAddress(address);
-    if ((await provider.get(PRIVATE_STATE_ID)) === null) continue;
-    states[address] = await provider.exportPrivateStates();
+    if ((await provider.forContract(address).get(PRIVATE_STATE_ID)) === null) continue;
+    states[address] = await provider.forContract(address).exportPrivateStates();
   }
   if (Object.keys(states).length === 0) throw new Error("There are no keys to back up yet. Join a board first.");
   let signingKeys: SigningKeyExport | null = null;
@@ -87,8 +86,7 @@ export function parseBackup(text: string): Backup {
 export async function backupConflicts(provider: PrivateStateProvider, backup: Backup): Promise<string[]> {
   const out: string[] = [];
   for (const address of Object.keys(backup.states)) {
-    provider.setContractAddress(address);
-    if ((await provider.get(PRIVATE_STATE_ID)) !== null) out.push(address);
+    if ((await provider.forContract(address).get(PRIVATE_STATE_ID)) !== null) out.push(address);
   }
   return out;
 }
@@ -101,8 +99,7 @@ export async function backupConflicts(provider: PrivateStateProvider, backup: Ba
 export async function restoreBackup(provider: PrivateStateProvider, backup: Backup, passphrase: string): Promise<number> {
   let restored = 0;
   for (const [address, e] of Object.entries(backup.states)) {
-    provider.setContractAddress(address);
-    const r = await provider.importPrivateStates(e, { password: passphrase, conflictStrategy: "overwrite" });
+    const r = await provider.forContract(address).importPrivateStates(e, { password: passphrase, conflictStrategy: "overwrite" });
     restored += r.imported + r.overwritten;
   }
   if (backup.signingKeys) await provider.importSigningKeys(backup.signingKeys, { password: passphrase, conflictStrategy: "skip" });
