@@ -11,9 +11,18 @@ change back (`Custom error: 104`,
 
 **Answer: yes.** On Preview, the preimage bounty compiled with 0.36.0 deployed, took a reward into
 escrow, paid a solver with the merged coin in one transaction (the poster decrypted the answer), and
-refunded a second bounty after its deadline. Our escrow always pays a coin out in full, so the
-change-write issue doesn't reach it. The contract changes are mechanical; the bigger costs are in
-the JS API and in key size.
+refunded a second bounty after its deadline. The contract changes are mechanical; the bigger costs
+are in the JS API and in key size.
+
+> **Correction, 2026-11-14.** This report first said the coin issue couldn't reach us because our
+> escrow pays a coin out in full. That was wrong. #839 is the client under-declaring the bytes a
+> contract writes when it *stores* a coin (the node stores the coin's real commitment-tree position),
+> and `postBounty` stores the reward coin. In a later Preview run of the full devnet suite, one
+> `postBounty` was rejected with `Custom error: 104`. It depends on the tree position, which is why
+> the posts here landed. The fix was validated upstream on 2026-11-13 and ships so far only in
+> release candidates (`ledger-v9` 1.0.2-rc.0, Midnight.js 5.0.1-rc.1). The same runs found a second
+> problem: in the two-solver race, both submits failed at the proof server's check step; the cause
+> isn't known yet.
 
 ## Setup
 

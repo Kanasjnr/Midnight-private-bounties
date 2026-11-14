@@ -703,10 +703,16 @@ What moving to Ledger 9 changes here, from Q16:
 - **JS:** the constructor and impure circuits return Promises; `createCircuitContext` takes one
   options object; imports move to `/v9` subpaths; providers use `forContract(address)`, a network
   `config`, and Ledger 9 wallet and node wrappers.
-- **The design doesn't change.** The escrow, the merged payout and refunds work on Preview; our
-  payouts always spend a coin in full, so the open change-write issue
-  ([midnight-ledger#839](https://github.com/midnightntwrk/midnight-ledger/issues/839)) doesn't
-  reach them.
+- **The design doesn't change.** The escrow, the merged payout and refunds work on Preview.
+- **Correction (2026-11-14): #839 does reach us.** Q16 concluded that the coin issue
+  ([midnight-ledger#839](https://github.com/midnightntwrk/midnight-ledger/issues/839)) couldn't,
+  because our payouts spend a coin in full. That was wrong: the issue is the client under-declaring
+  the bytes a contract writes when it stores a coin, because the node stores the coin's real
+  position in the commitment tree. `postBounty` stores the reward coin, and on 2026-11-14 one
+  `postBounty` on Preview was rejected with `Custom error: 104`, the code the issue produces. It
+  depends on the chain's tree position, which is why Q16's posts landed. The fix was validated
+  upstream on 2026-11-13 and so far ships only in release candidates (`ledger-v9` 1.0.2-rc.0,
+  Midnight.js 5.0.1-rc.1); we move to the final releases when they're out.
 - **New in Ledger 9 and not used yet:** contract events (the activity feed could read them instead
   of comparing states), ECDSA over secp256k1 and Keccak (a signed-record issuer could use an
   ordinary secp256k1 key), and cross-contract calls (unshielded only so far, so they don't help a
@@ -732,7 +738,7 @@ What moving to Ledger 9 changes here, from Q16:
 | Q13 | Reviewed work: can the contract enforce an exclusive claim window and a review clock with block-time comparisons only, keep the collect unlinkable, and let an arbiter overturn a rejection? | ✅ Works on a devnet | The contract passed 18 simulator tests: two-sided window checks, silence pays, collect merges a fresh coin first, arbiter overturn, refund. It found two gaps: squatting and rewards locked if nobody collects. Both are fixed in the template, `bounty_reviewed_work` (`release` and the collect-by limit), which passes 25 simulator tests and 5 devnet tests (2026-11-02): applicant mode end to end with the Q2 leak checks, silence pays on real block time, first to claim with `release`, and the collect-by refund. A wallet run is still to do. [Results](spike/q13-reviewed-work/RESULTS.md), devnet test `src/test/bounty_reviewed_work.test.ts` |
 | Q14 | Can the UI read a contract's history (activity, post times, paid amounts) from the indexer? | ✅ Answered | Yes: `contract(address) { actions(limit) }` on the Preview indexer lists every action with its circuit name, block timestamp (in milliseconds) and the state after it. It doesn't say which bounty changed (compare states), and it doesn't page by offset. Post time and amount are simpler written into `listings` at post time, which they now are (section 7). [Results](spike/q14-indexer-history/RESULTS.md) |
 | Q15 | Can bounty chat run over public Nostr relays? | ✅ Answered | Yes: five of seven relays took our events, delivered them live in 150 to 480 ms, returned them by thread tag, and kept only the newer version of an edit. Every one took 4 KiB; some refused 16 or 64 KiB, one banned the IP. `nostr-tools` adds 16.6 KB gzipped. After 19 hours four of the five relays still had the events and one had dropped them, so the app also keeps them in the browser; a week still to check. [Results](spike/q15-nostr-chat/RESULTS.md) |
-| Q16 | Does the preimage bounty work on Ledger 9 (compiler 0.36.0, Midnight.js 5)? | ✅ Yes | On Preview, the 0.36.0 build deployed, escrowed a reward, paid a solver with the merged coin in one transaction (142 s end to end; the poster decrypted), and refunded after the deadline (89 s). Contract changes are mechanical (pragma, `JubjubScalar` and `Field` casts); the JS API and key sizes change more. [Results](spike/q16-ledger9/RESULTS.md) |
+| Q16 | Does the preimage bounty work on Ledger 9 (compiler 0.36.0, Midnight.js 5)? | ⚠️ Mostly | On Preview, the 0.36.0 build deployed, escrowed a reward, paid a solver with the merged coin in one transaction (the poster decrypted), and refunded after the deadline. Later runs (2026-11-14) hit two problems: a `postBounty` rejected with `Custom error: 104` (midnight-ledger#839, fixed upstream, final release pending), and in the two-solver race both submits failing at the proof server's check step (cause not yet known). [Results](spike/q16-ledger9/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 
