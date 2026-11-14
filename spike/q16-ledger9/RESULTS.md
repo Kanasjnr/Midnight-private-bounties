@@ -21,8 +21,12 @@ are in the JS API and in key size.
 > `postBounty` was rejected with `Custom error: 104`. It depends on the tree position, which is why
 > the posts here landed. The fix was validated upstream on 2026-11-13 and ships so far only in
 > release candidates (`ledger-v9` 1.0.2-rc.0, Midnight.js 5.0.1-rc.1). The same runs found a second
-> problem: in the two-solver race, both submits failed at the proof server's check step; the cause
-> isn't known yet.
+> problem, in the test setup rather than Ledger 9: in the two-solver race, both submits failed at the
+> proof server's check step. A diagnostic run showed why: `429 Too Many Requests`. Proof server 9.0.0
+> queues 10 jobs by default (`--job-capacity`), a `submit` sends about 6, and two at once overflow
+> it; two submits on two *different* bounties failed the same way. One user's own proof server only
+> sees their transactions, so this is a test-harness setting: our `compose.yml` now sets
+> `MIDNIGHT_PROOF_SERVER_JOB_CAPACITY` to 32.
 
 ## Setup
 

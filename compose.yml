@@ -6,6 +6,9 @@ services:
       - '127.0.0.1:6300:6300'
     environment:
       RUST_BACKTRACE: 'full'
+      # One submit queues about 6 proof jobs, and the default queue holds 10, so
+      # two solvers proving at once (the D3 race) get 429 Too Many Requests.
+      MIDNIGHT_PROOF_SERVER_JOB_CAPACITY: '32'
     healthcheck:
       test: ['CMD-SHELL', 'echo > /dev/tcp/127.0.0.1/6300']
       interval: 10s
