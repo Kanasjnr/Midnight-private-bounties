@@ -677,22 +677,23 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 
 ## 17. Target stack
 
-Mainnet and Preview moved to Ledger 9 on 2026-11-06 (Preview was reset as a new chain). Preprod
-stays on Ledger 8 for now. **The project targets Ledger 9**; spike Q16 showed the contracts need
-only mechanical changes ([Q16](spike/q16-ledger9/RESULTS.md)). Versions are from the docs'
-compatibility matrix on 2026-11-08.
+Every public network runs Ledger 9: Mainnet moved on 2026-11-06, Preview was reset as a new chain
+the same week, and Preprod moved on 2026-11-09 in an in-place upgrade (its contracts and balances
+carried over). **The project targets Ledger 9 only**; spike Q16 showed the contracts need only
+mechanical changes ([Q16](spike/q16-ledger9/RESULTS.md)). The last Ledger 8 build stays reachable
+at the `ledger-8-final` tag. Versions are from the docs' compatibility matrix on 2026-11-14.
 
-| Component | Ledger 9 (Mainnet, Preview): the target | Ledger 8 (Preprod, until it upgrades) |
-|---|---|---|
-| Compact compiler | 0.36.0, language 0.28 (`compact compile +0.36.0 ...`) | 0.31.1, language 0.23 |
-| `@midnight-ntwrk/compact-runtime` | 0.21.0 | 0.16.0 |
-| Midnight.js | 5.0.0 (Node 22.12 or later) | 4.1.1 |
-| Wallet SDK | `@midnightntwrk/wallet-sdk` 2.0.0 | 1.2.0 (`wallet-sdk-facade` 4.1.0) |
-| DApp Connector API | 4.1.0 | 4.0.1 |
-| Ledger | `@midnightntwrk/ledger-v9` | `ledger-v8` 8.1.x |
-| Node / indexer / proof server | 2.1.101 / 4.4.101 / 9.0.0 | 1.0.400 / 4.3.302 / 8.1.3 |
-| Networks | Preview, Mainnet. The examples' local devnet isn't on Ledger 9 yet, so network tests run on Preview | Preprod, and the local devnet |
-| Block time | Seconds since the Unix epoch (`blockTimeLt`/`Gte` take a `Uint<64>`) | The same |
+| Component | Version (Mainnet, Preview, Preprod) |
+|---|---|
+| Compact compiler | 0.36.0, language 0.28 (`compact compile +0.36.0 ...`) |
+| `@midnight-ntwrk/compact-runtime` | 0.21.0 |
+| Midnight.js | 5.0.0 (Node 22.12 or later) |
+| Wallet SDK | `@midnightntwrk/wallet-sdk` 2.0.0 |
+| DApp Connector API | 4.1.0 |
+| Ledger | `@midnightntwrk/ledger-v9` |
+| Node / indexer / proof server | 2.1.101 / 4.4.101 / 9.0.0 |
+| Networks | Preview for testing (Preprod works too, through Blockfrost). The examples' local devnet isn't on Ledger 9 yet, so network tests run on Preview |
+| Block time | Seconds since the Unix epoch (`blockTimeLt`/`Gte` take a `Uint<64>`) |
 
 What moving to Ledger 9 changes here, from Q16:
 - **Contracts:** an exact `pragma language_version 0.28`; curve scalars cast to `JubjubScalar`

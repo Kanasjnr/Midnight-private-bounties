@@ -54,7 +54,7 @@ application goes on chain.
 Every transaction shows in the tray at the bottom right, step by step:
 running the circuit, proving, wallet approval, sending, waiting for a block.
 The steps come from wrapping the providers (`src/tx.tsx`), in the order
-midnight-js 4.1.1 calls them. A failed call says whether anything could have
+Midnight.js 5 calls them. A failed call says whether anything could have
 been sent, and offers a retry (spike Q6 saw first attempts fail in the wallet
 and pass on retry).
 
@@ -121,14 +121,14 @@ different origin, so keys made on one page don't show on the other.
 
 ## Run
 
-`app/` isn't covered by the examples repo's workspace globs, so add
-`"examples/*/app"` to the root `package.json` workspaces there and run
-`yarn install` (CI does the same). Then:
+It runs inside a checkout of midnight-examples on its Ledger 9 stack (npm, compiler 0.36.0,
+Midnight.js 5). `app/` isn't covered by that repo's workspace globs, so add `"examples/*/app"` to
+the root `package.json` workspaces there and run `npm install` (CI does the same). Then:
 
 ```bash
-yarn workspace @midnight-ntwrk/example-private-bounties run compile    # contracts, with keys
-cd examples/private-bounties && yarn proof:up                            # local proof server
-yarn workspace @midnight-ntwrk/example-private-bounties-app dev         # http://localhost:5174
+npm run compile -w @midnight-ntwrk/example-private-bounties     # contracts, with keys
+cd examples/private-bounties && npm run proof:up                 # proof server 9.0.0
+npm run dev -w @midnight-ntwrk/example-private-bounties-app     # http://localhost:5174
 ```
 
 | Script | What it does |
