@@ -4,7 +4,7 @@
 // the whole contract state after it. An action doesn't say which bounty it
 // touched, so each state is decoded and compared with the one before it.
 // Everything here is public: titles, rewards and statuses, never who acted.
-import { ContractState } from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
+import { ContractState } from "@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime";
 import { fromHex } from "@midnight-ntwrk/midnight-js-utils";
 import { bountyViews } from "@/midnight/private-bounties-api";
 import { ledger as answerLedger } from "@/midnight/contract";

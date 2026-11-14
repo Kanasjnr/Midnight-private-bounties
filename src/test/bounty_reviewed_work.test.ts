@@ -25,7 +25,7 @@ import {
   encodeCoinPublicKey,
   encodeContractAddress,
   persistentHash,
-} from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
+} from '@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime';
 import {
   encryptionKeys,
   freshCoin,
@@ -36,16 +36,15 @@ import {
   tokenColor,
   waitForShieldedBalance,
   type TokenColor,
-} from '@midnight-ntwrk/example-coins';
-import { resolveWallet } from '@midnight-ntwrk/example-fast-sync';
-import { assertNotInPublicState } from '@midnight-ntwrk/example-sim';
+} from './coins.js';
+import { assertNotInPublicState } from './sim.js';
 import type { EnvironmentConfiguration } from '@midnight-ntwrk/testkit-js';
 import pino from 'pino';
 import { WebSocket } from 'ws';
 
 import { getConfig } from '../config.js';
-import { MidnightWalletProvider, syncWallet } from '../wallet.js';
-import { buildProviders, type BountyProviders } from '../providers.js';
+import { MidnightWalletProvider, resolveWallet, syncWallet, waitForNightThenDust } from '../wallet.js';
+import { buildProviders, ledgerState, type BountyProviders } from '../providers.js';
 import {
   CompiledBountyReviewedWorkContract,
   CompiledTestTokenContract,
@@ -64,6 +63,8 @@ globalThis.WebSocket = WebSocket as unknown as typeof globalThis.WebSocket;
 
 const logger = pino({ level: process.env['LOG_LEVEL'] ?? 'info', transport: { target: 'pino-pretty' } });
 const config = getConfig();
+const NETWORK = process.env['MIDNIGHT_NETWORK'] ?? 'local';
+const REMOTE = NETWORK !== 'local';
 const LONG = 45 * 60_000;
 const REWARD = 100n;
 const STAKE = 10n;
@@ -131,7 +132,7 @@ describe(`bounty_reviewed_work on ${config.networkId}`, () => {
   async function query(): Promise<BountyReviewedWorkLedger> {
     const s = await alice.prov.publicDataProvider.queryContractState(address);
     expect(s).not.toBeNull();
-    return bountyReviewedWorkLedger(s!.data);
+    return bountyReviewedWorkLedger(ledgerState(s));
   }
 
   async function balance(p: Party): Promise<bigint> {
@@ -140,7 +141,7 @@ describe(`bounty_reviewed_work on ${config.networkId}`, () => {
   }
 
   async function call(p: Party, label: string, circuitId: string, args: unknown[], link: bigint[] = NO_ANSWER) {
-    await p.prov.privateStateProvider.set(p.psId, createBountyPrivateState(p.sk, link));
+    await p.prov.privateStateProvider.forContract(address).set(p.psId, createBountyPrivateState(p.sk, link));
     const t0 = Date.now();
     const tx = await (submitCallTx as any)(p.prov, {
       compiledContract: CompiledBountyReviewedWorkContract,
@@ -206,10 +207,12 @@ describe(`bounty_reviewed_work on ${config.networkId}`, () => {
       proofServer: config.proofServer,
     };
     const make = async (role: 'ALICE' | 'BOB' | 'CHARLIE', name: string): Promise<Party> => {
-      const setup = resolveWallet(config.networkId === 'undeployed' ? 'local' : config.networkId, role);
-      const wallet = await MidnightWalletProvider.build(logger, env, setup.secret, { fastSync: setup.fastSync });
+      const setup = resolveWallet(NETWORK, role);
+      const wallet = await MidnightWalletProvider.build(logger, env, setup.secret);
       await wallet.start();
-      await syncWallet(logger, wallet.wallet, 600_000);
+      await syncWallet(logger, wallet.wallet, REMOTE ? 60 * 60_000 : 600_000);
+      // Synced is not funded: on a remote network, wait for NIGHT and register it for DUST.
+      if (REMOTE) await waitForNightThenDust(logger, wallet.wallet, wallet.unshieldedKeystore, env, config.faucet, { label: setup.role });
       const prov = buildProviders(wallet, bountyReviewedWorkZkConfigPath, config, `rw-${name}`);
       return { name, wallet, prov, psId: `RW${name}`, sk: new Uint8Array(randomBytes(32)) };
     };
@@ -228,7 +231,6 @@ describe(`bounty_reviewed_work on ${config.networkId}`, () => {
       args: [color.bytes, MIN_REWARD, MIN_WINDOW, SLACK, COLLECT],
     });
     address = work.deployTxData.public.contractAddress;
-    for (const p of [alice, bob, charlie]) p.prov.privateStateProvider.setContractAddress(address);
     logger.info(`token ${tokenAddress}, reviewed-work contract ${address}`);
 
     // Alice funds the rewards. Bob brings a small coin of his own to collect

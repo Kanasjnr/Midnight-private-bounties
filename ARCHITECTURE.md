@@ -677,17 +677,46 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 
 ## 17. Target stack
 
-| Component | Version |
+Every public network runs Ledger 9: Mainnet moved on 2026-11-06, Preview was reset as a new chain
+the same week, and Preprod moved on 2026-11-09 in an in-place upgrade (its contracts and balances
+carried over). **The project targets Ledger 9 only**; spike Q16 showed the contracts need only
+mechanical changes ([Q16](spike/q16-ledger9/RESULTS.md)). The last Ledger 8 build stays reachable
+at the `ledger-8-final` tag. Versions are from the docs' compatibility matrix on 2026-11-14.
+
+| Component | Version (Mainnet, Preview, Preprod) |
 |---|---|
-| Compact compiler | 0.31.1 (`compact compile +0.31.1 ...`) |
-| `@midnight-ntwrk/compact-runtime` | 0.16.0 (what 0.31.1 output checks for) |
-| midnight-js | 4.1.1 |
-| DApp Connector API | 4.0.1 |
-| `ledger-v8` | 8.1.x |
-| `wallet-sdk-facade` | 4.1.0, pinned (the npm `latest` tag still points to 4.0.1) |
-| Node / indexer / proof server | 1.0.400 / indexer-standalone 4.3.3 / 8.1.0 |
-| Networks | Local, then Preview, then Preprod (the spike devnet ran node 1.0.0, as in the examples' compose) |
+| Compact compiler | 0.36.0, language 0.28 (`compact compile +0.36.0 ...`) |
+| `@midnight-ntwrk/compact-runtime` | 0.21.0 |
+| Midnight.js | 5.0.0 (Node 22.12 or later) |
+| Wallet SDK | `@midnightntwrk/wallet-sdk` 2.0.0 |
+| DApp Connector API | 4.1.0 |
+| Ledger | `@midnightntwrk/ledger-v9` |
+| Node / indexer / proof server | 2.1.101 / 4.4.101 / 9.0.0 |
+| Networks | Preview for testing (Preprod works too, through Blockfrost). The examples' local devnet isn't on Ledger 9 yet, so network tests run on Preview |
 | Block time | Seconds since the Unix epoch (`blockTimeLt`/`Gte` take a `Uint<64>`) |
+
+What moving to Ledger 9 changes here, from Q16:
+- **Contracts:** an exact `pragma language_version 0.28`; curve scalars cast to `JubjubScalar`
+  (`ecMul` and `ecMulGenerator` take typed scalars); integer literals cast to `Field` where a
+  `Field` argument is expected. Every verifier key changes, and ZKIR v3 prover keys are about 4.5
+  times larger (`submit` 98.6 MB, against 21.6 MB).
+- **JS:** the constructor and impure circuits return Promises; `createCircuitContext` takes one
+  options object; imports move to `/v9` subpaths; providers use `forContract(address)`, a network
+  `config`, and Ledger 9 wallet and node wrappers.
+- **The design doesn't change.** The escrow, the merged payout and refunds work on Preview.
+- **Correction (2026-11-14): #839 does reach us.** Q16 concluded that the coin issue
+  ([midnight-ledger#839](https://github.com/midnightntwrk/midnight-ledger/issues/839)) couldn't,
+  because our payouts spend a coin in full. That was wrong: the issue is the client under-declaring
+  the bytes a contract writes when it stores a coin, because the node stores the coin's real
+  position in the commitment tree. `postBounty` stores the reward coin, and on 2026-11-14 one
+  `postBounty` on Preview was rejected with `Custom error: 104`, the code the issue produces. It
+  depends on the chain's tree position, which is why Q16's posts landed. The fix was validated
+  upstream on 2026-11-13 and so far ships only in release candidates (`ledger-v9` 1.0.2-rc.0,
+  Midnight.js 5.0.1-rc.1); we move to the final releases when they're out.
+- **New in Ledger 9 and not used yet:** contract events (the activity feed could read them instead
+  of comparing states), ECDSA over secp256k1 and Keccak (a signed-record issuer could use an
+  ordinary secp256k1 key), and cross-contract calls (unshielded only so far, so they don't help a
+  shielded escrow).
 
 ## 18. Open questions and spike results
 
@@ -708,7 +737,8 @@ checker made the core circuit 8x bigger (k = 14 instead of 11) and about 3x slow
 | Q12 | Can a solver's coin be zero-value? | ✅ Answered | Yes: a solver holding none of the reward token submitted with a zero-value coin, was paid in full, and the payout passed the Q2 leak checks. Solvers don't need the token, and the contracts accept a zero-value solver coin (the reward must still be non-zero). [Results](spike/q2-escrow/RESULTS.md) |
 | Q13 | Reviewed work: can the contract enforce an exclusive claim window and a review clock with block-time comparisons only, keep the collect unlinkable, and let an arbiter overturn a rejection? | ✅ Works on a devnet | The contract passed 18 simulator tests: two-sided window checks, silence pays, collect merges a fresh coin first, arbiter overturn, refund. It found two gaps: squatting and rewards locked if nobody collects. Both are fixed in the template, `bounty_reviewed_work` (`release` and the collect-by limit), which passes 25 simulator tests and 5 devnet tests (2026-11-02): applicant mode end to end with the Q2 leak checks, silence pays on real block time, first to claim with `release`, and the collect-by refund. A wallet run is still to do. [Results](spike/q13-reviewed-work/RESULTS.md), devnet test `src/test/bounty_reviewed_work.test.ts` |
 | Q14 | Can the UI read a contract's history (activity, post times, paid amounts) from the indexer? | ✅ Answered | Yes: `contract(address) { actions(limit) }` on the Preview indexer lists every action with its circuit name, block timestamp (in milliseconds) and the state after it. It doesn't say which bounty changed (compare states), and it doesn't page by offset. Post time and amount are simpler written into `listings` at post time, which they now are (section 7). [Results](spike/q14-indexer-history/RESULTS.md) |
-| Q15 | Can bounty chat run over public Nostr relays? | ✅ Answered | Yes: five of seven relays took our events, delivered them live in 150 to 480 ms, returned them by thread tag, and kept only the newer version of an edit. Every one took 4 KiB; some refused 16 or 64 KiB, one banned the IP. `nostr-tools` adds 16.6 KB gzipped. Retention over days still to check. [Results](spike/q15-nostr-chat/RESULTS.md) |
+| Q15 | Can bounty chat run over public Nostr relays? | ✅ Answered | Yes: five of seven relays took our events, delivered them live in 150 to 480 ms, returned them by thread tag, and kept only the newer version of an edit. Every one took 4 KiB; some refused 16 or 64 KiB, one banned the IP. `nostr-tools` adds 16.6 KB gzipped. After 19 hours four of the five relays still had the events and one had dropped them, so the app also keeps them in the browser; a week still to check. [Results](spike/q15-nostr-chat/RESULTS.md) |
+| Q16 | Does Private Bounties work on Ledger 9 (compiler 0.36.0, Midnight.js 5)? | ✅ Yes | All four devnet suites pass on Preview in CI (2026-11-14, [run](https://github.com/Kanasjnr/Midnight-private-bounties/actions/runs/43594657389)): preimage D1 to D5, factor, signed record, and reviewed work W1, W2, W3 and W5, 13 of 13. The node's rejections in that run are the ones the tests expect: `NullifierAlreadyPresent` for the race loser, a failed transcript replay for the late submit. Open: `postBounty` can be rejected with `Custom error: 104` (midnight-ledger#839, fixed upstream, final release pending); it's intermittent, and didn't hit this run. The two-solver race failing locally was the proof server's 10-job queue, not Ledger 9. [Results](spike/q16-ledger9/RESULTS.md) |
 
 ## 19. Build plan (tentative)
 

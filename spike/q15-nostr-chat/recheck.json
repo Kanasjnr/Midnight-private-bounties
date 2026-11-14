@@ -9,5 +9,16 @@
       "wss://offchain.pub": true,
       "wss://nostr.mom": true
     }
+  },
+  {
+    "at": "2026-11-04T11:19:35.480Z",
+    "hoursAfter": 19.1,
+    "relays": {
+      "wss://nos.lol": true,
+      "wss://relay.primal.net": true,
+      "wss://relay.snort.social": false,
+      "wss://offchain.pub": true,
+      "wss://nostr.mom": true
+    }
   }
 ]

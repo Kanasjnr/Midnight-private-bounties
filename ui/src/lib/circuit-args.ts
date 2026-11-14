@@ -1,6 +1,6 @@
 // Text-field parsing for circuit arguments, used by <CircuitForm>.
 //
-// `yarn new:ui` turns each circuit argument's type in contract-info.json into
+// `npm run new:ui` turns each circuit argument's type in contract-info.json into
 // an ArgType when it has a simple TypeScript counterpart. The counterparts are
 // the ones the compiler emits in contract/managed/<c>/contract/index.d.ts:
 //
@@ -32,8 +32,8 @@
 // the generated panel leaves a TODO for those circuits instead.
 //
 // Template-owned: edit templates/ui/src/lib/circuit-args.ts, then
-// `yarn new:ui <name> --sync`.
-import { MAX_FIELD } from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
+// `npm run new:ui -- <name> --sync`.
+import { MAX_FIELD } from "@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime";
 import { coinPublicKeyFromBech32, userAddressFromBech32 } from "@/lib/addresses";
 import type { BookedCoin } from "@/lib/coin-book";
 
