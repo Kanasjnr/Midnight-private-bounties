@@ -4,10 +4,10 @@
 // `getShieldedBalances`) are keyed by token type: a token's 32-byte color as
 // hex. A contract's own token has the color `tokenType(domainSep, contract)`,
 // which the UI can compute with `rawTokenType` from
-// @midnight-ntwrk/midnight-js-protocol/compact-runtime (see token-transfers).
+// @midnight-ntwrk/midnight-js-protocol/v9/compact-runtime (see token-transfers).
 //
 // Template-owned: edit templates/ui/src/lib/tokens.ts, then
-// `yarn new:ui --sync-all`.
+// `npm run new:ui -- --sync-all`.
 
 /** NIGHT's color: `default<Bytes<32>>` in Compact, all zeros. */
 export const NIGHT_COLOR = "00".repeat(32);

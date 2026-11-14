@@ -28,7 +28,7 @@ import {
   submitCallTx,
   type FoundContract,
 } from "@midnight-ntwrk/midnight-js-contracts";
-import { CompiledContract } from "@midnight-ntwrk/midnight-js-protocol/compact-js";
+import { CompiledContract } from "@midnight-ntwrk/midnight-js-protocol/v9/compact-js";
 import {
   CompactTypeBytes,
   CompactTypeVector,
@@ -39,8 +39,8 @@ import {
   persistentHash,
   rawTokenType,
   type ContractAddress,
-} from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
-import { createShieldedCoinInfo } from "@midnight-ntwrk/midnight-js-protocol/ledger";
+} from "@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime";
+import { createShieldedCoinInfo } from "@midnight-ntwrk/midnight-js-protocol/v9";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { map, type Observable } from "rxjs";
 import { Contract as TestTokenContractClass } from "../../../contract/managed/test_token/contract/index.js";
@@ -57,7 +57,7 @@ import {
   ledger,
   type Ledger,
 } from "./contract";
-import type { ContractProviders, PrivateBountiesProviders } from "./providers";
+import { contractStateData, type ContractProviders, type PrivateBountiesProviders } from "./providers";
 
 export { Status, type Delivery };
 
@@ -178,8 +178,7 @@ export async function joinPrivateBounties(
   providers: PrivateBountiesProviders,
   address: ContractAddress,
 ): Promise<PrivateBountiesContract> {
-  providers.privateStateProvider.setContractAddress(address);
-  const stored = await providers.privateStateProvider.get(PRIVATE_STATE_ID);
+  const stored = await providers.privateStateProvider.forContract(address).get(PRIVATE_STATE_ID);
   if (stored !== null) {
     return findDeployedContract(providers, {
       compiledContract: CompiledPrivateBountiesContract,
@@ -200,8 +199,7 @@ export async function readPrivateState(
   providers: PrivateBountiesProviders,
   address: ContractAddress,
 ): Promise<PrivateBountiesPrivateState | null> {
-  providers.privateStateProvider.setContractAddress(address);
-  return providers.privateStateProvider.get(PRIVATE_STATE_ID);
+  return providers.privateStateProvider.forContract(address).get(PRIVATE_STATE_ID);
 }
 
 async function writePrivateState(
@@ -209,8 +207,7 @@ async function writePrivateState(
   address: ContractAddress,
   state: PrivateBountiesPrivateState,
 ): Promise<void> {
-  providers.privateStateProvider.setContractAddress(address);
-  await providers.privateStateProvider.set(PRIVATE_STATE_ID, state);
+  await providers.privateStateProvider.forContract(address).set(PRIVATE_STATE_ID, state);
 }
 
 /**
@@ -387,7 +384,7 @@ export function ledger$(
 ): Observable<Ledger> {
   return providers.publicDataProvider
     .contractStateObservable(address, { type: "latest" })
-    .pipe(map((state) => ledger(state.data)));
+    .pipe(map(({ value }) => ledger(contractStateData(value))));
 }
 
 // --- pure helpers (tested against the circuits) ---------------------------------

@@ -6,8 +6,8 @@ import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 
-// Vite is pinned to 6.4.3 in package.json on purpose: it matches the Vite that
-// Yarn hoists to the repo root (see the root AGENTS.md). Asking for a different
+// Vite is pinned to 6.4.4 in package.json on purpose: it matches the Vite that
+// npm hoists to the repo root (see the root AGENTS.md). Asking for a different
 // major here could change what gets hoisted and break other examples' vitest
 // configs.
 export default defineConfig({
@@ -31,17 +31,17 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  // Dev-server pre-bundling (esbuild) breaks the WASM loading in ledger-v8 and
-  // onchain-runtime-v3, so those are served as-is. midnight-js-protocol has to
-  // be excluded too: it does `export * from '@midnight-ntwrk/ledger-v8'`, and
+  // Dev-server pre-bundling (esbuild) breaks the WASM loading in ledger-v9 and
+  // onchain-runtime-v4, so those are served as-is. midnight-js-protocol has to
+  // be excluded too: it does `export * from '@midnightntwrk/ledger-v9'`, and
   // esbuild can't list the names re-exported from an excluded package.
   // Keep this list minimal. Excluding a package also skips CommonJS->ESM
   // conversion of its dependencies (excluding compact-runtime, for example,
   // breaks its `object-inspect` import).
   optimizeDeps: {
     exclude: [
-      "@midnight-ntwrk/ledger-v8",
-      "@midnight-ntwrk/onchain-runtime-v3",
+      "@midnightntwrk/ledger-v9",
+      "@midnightntwrk/onchain-runtime-v4",
       "@midnight-ntwrk/midnight-js-protocol",
     ],
   },

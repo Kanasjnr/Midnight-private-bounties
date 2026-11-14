@@ -11,8 +11,8 @@
 // record's first element, and each type names its three fields. The contract
 // only compares the first element with the bounty's.
 import { deployContract, findDeployedContract, type FoundContract } from "@midnight-ntwrk/midnight-js-contracts";
-import { CompiledContract } from "@midnight-ntwrk/midnight-js-protocol/compact-js";
-import type { ContractAddress } from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
+import { CompiledContract } from "@midnight-ntwrk/midnight-js-protocol/v9/compact-js";
+import type { ContractAddress } from "@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { map, type Observable } from "rxjs";
 import * as Factor from "../../../contract/managed/bounty_factor/contract/index.js";
@@ -21,7 +21,7 @@ import { posterKeyFor } from "../../../contract/keys.js";
 import { signRecord } from "../../../contract/signing.js";
 import { NO_ANSWER, NO_SIGNATURE, randomScalar, witnesses, type SchnorrSignature } from "../../../contract/witnesses.js";
 import { PRIVATE_STATE_ID, type PrivateBountiesPrivateState } from "@/midnight/contract";
-import type { ContractProviders } from "@/midnight/providers";
+import { contractStateData, type ContractProviders } from "@/midnight/providers";
 import {
   freshCoin,
   listingError,
@@ -75,8 +75,7 @@ export async function deployTemplate(t: Template, providers: TemplateProviders, 
 
 /** Join by address, reusing this browser's private state for it when there is one. */
 export async function joinTemplate(t: Template, providers: TemplateProviders, address: ContractAddress): Promise<TemplateContract> {
-  providers.privateStateProvider.setContractAddress(address);
-  const stored = await providers.privateStateProvider.get(PRIVATE_STATE_ID);
+  const stored = await providers.privateStateProvider.forContract(address).get(PRIVATE_STATE_ID);
   const found = await findDeployedContract(providers as never, {
     compiledContract: TEMPLATES[t].compiled as never,
     contractAddress: address,
@@ -87,12 +86,11 @@ export async function joinTemplate(t: Template, providers: TemplateProviders, ad
 }
 
 export async function readTemplateState(providers: TemplateProviders, address: ContractAddress): Promise<PrivateBountiesPrivateState | null> {
-  providers.privateStateProvider.setContractAddress(address);
-  return providers.privateStateProvider.get(PRIVATE_STATE_ID);
+  return providers.privateStateProvider.forContract(address).get(PRIVATE_STATE_ID);
 }
 
 export function template$(t: Template, providers: TemplateProviders, address: ContractAddress): Observable<TemplateLedger> {
-  return providers.publicDataProvider.contractStateObservable(address, { type: "latest" }).pipe(map((s) => TEMPLATES[t].ledger(s.data)));
+  return providers.publicDataProvider.contractStateObservable(address, { type: "latest" }).pipe(map(({ value }) => TEMPLATES[t].ledger(contractStateData(value))));
 }
 
 // ---- record types ----
@@ -362,8 +360,7 @@ export async function submitTemplate(
   const base = await readTemplateState(providers, address);
   if (!base) throw new Error("No private state for this contract: rejoin it first.");
   const write = async (s: PrivateBountiesPrivateState) => {
-    providers.privateStateProvider.setContractAddress(address);
-    await providers.privateStateProvider.set(PRIVATE_STATE_ID, s);
+    await providers.privateStateProvider.forContract(address).set(PRIVATE_STATE_ID, s);
   };
   await write({ ...base, answer, signature });
   try {

@@ -13,7 +13,7 @@
 // See ARCHITECTURE.md. Each template contract hosts many bounties; the shared
 // logic lives in the modules imported below.
 
-pragma language_version 0.23;
+pragma language_version 0.28;
 import CompactStandardLibrary;
 import "escrow" prefix Escrow_;
 import "deadline" prefix Deadline_;

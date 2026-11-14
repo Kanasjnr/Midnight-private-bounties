@@ -12,7 +12,7 @@ import {
   sampleContractAddress,
   type CircuitContext,
   type CircuitResults,
-} from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
+} from "@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { Contract, ledger, pureCircuits } from "../../../contract/managed/bounty_reviewed_work/contract/index.js";
 import { posterKeyFor } from "../../../contract/keys.js";
@@ -53,22 +53,36 @@ const c = contract.impureCircuits;
 const nowSec = (): bigint => BigInt(Math.floor(Date.now() / 1000));
 const sleep = (s: number) => new Promise((r) => setTimeout(r, s * 1000));
 
+// Ledger 9: the constructor and the circuits are async, hence create() and the awaits.
 class Board {
-  data;
-  constructor(poster: PS, collect: bigint) {
-    this.data = contract.initialState(createConstructorContext(poster, POSTER_PK), COLOR.bytes, 1n, 0n, SLACK, collect).currentContractState.data;
+  data!: Awaited<ReturnType<typeof contract.initialState>>["currentContractState"]["data"];
+  static async create(poster: PS, collect: bigint): Promise<Board> {
+    const b = new Board();
+    b.data = (await contract.initialState(createConstructorContext(poster, POSTER_PK), COLOR.bytes, 1n, 0n, SLACK, collect)).currentContractState.data;
+    return b;
   }
   get ledger(): WorkLedger {
     return ledger(this.data);
   }
-  call<R>(pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => CircuitResults<PS, R>): CircuitResults<PS, R> {
-    const res = fn(createCircuitContext(ADDRESS, pk, this.data, ps));
-    this.data = res.context.currentQueryContext.state;
+  /** `time` pins the block time (seconds) the circuit sees; it defaults to now. */
+  private ctx(circuitId: string, pk: string, ps: PS, time?: bigint): CircuitContext<PS> {
+    return createCircuitContext({
+      circuitId,
+      contractAddress: ADDRESS,
+      coinPublicKeyOrZswapState: pk,
+      contractState: this.data,
+      privateState: ps,
+      ...(time === undefined ? {} : { time: Number(time) }),
+    });
+  }
+  async call<R>(circuitId: string, pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => Promise<CircuitResults<PS, R>>): Promise<CircuitResults<PS, R>> {
+    const res = await fn(this.ctx(circuitId, pk, ps));
+    this.data = res.context.callContext.currentQueryContext.state as typeof this.data;
     return res;
   }
-  errorOf(pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => unknown): string | null {
+  async errorOf(circuitId: string, pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => Promise<unknown>, time?: bigint): Promise<string | null> {
     try {
-      fn(createCircuitContext(ADDRESS, pk, this.data, ps));
+      await fn(this.ctx(circuitId, pk, ps, time));
       return null;
     } catch (err) {
       return err instanceof Error ? err.message : String(err);
@@ -76,14 +90,14 @@ class Board {
   }
 }
 
-function setup(collect = 3_600n) {
+async function setup(collect = 3_600n) {
   const poster = newPrivateState();
   const contributor = newPrivateState();
   const other = newPrivateState();
-  return { board: new Board(poster, collect), poster, contributor, other };
+  return { board: await Board.create(poster, collect), poster, contributor, other };
 }
 
-type F = ReturnType<typeof setup>;
+type F = Awaited<ReturnType<typeof setup>>;
 
 async function post(f: F, t: Partial<Terms> = {}) {
   const salt = crypto.getRandomValues(new Uint8Array(32));
@@ -99,7 +113,7 @@ async function post(f: F, t: Partial<Terms> = {}) {
     arbiter: new Uint8Array(32),
     ...t,
   };
-  f.board.call(POSTER_PK, f.poster, (ctx) =>
+  await f.board.call("postWork", POSTER_PK, f.poster, (ctx) =>
     c.postWork(ctx, salt, freshCoin(COLOR.hex, REWARD), pureCircuits.posterPublicKey(key), terms, "Write a guide", "Link the PR.", nowSec() - 60n),
   );
   return id;
@@ -112,8 +126,8 @@ function view(f: F, id: Uint8Array, ps: PS): WorkView {
 }
 
 /** Run `action` the way the app's call would, as (pk, ps). */
-function runAction(action: WorkAction, v: WorkView, extra: { pseudonym?: Uint8Array } = {}) {
-  const now = nowSec();
+function runAction(action: WorkAction, v: WorkView, extra: { pseudonym?: Uint8Array; now?: bigint } = {}) {
+  const now = extra.now ?? nowSec();
   return (ctx: CircuitContext<PS>) => {
     switch (action) {
       case "claim":
@@ -143,7 +157,7 @@ function runAction(action: WorkAction, v: WorkView, extra: { pseudonym?: Uint8Ar
 const ACTIONS: WorkAction[] = ["claim", "assign", "release", "submit", "approve", "reject", "reopen", "collect", "refund"];
 
 /** For every action and every party, workActionError and the circuit agree on pass or fail. */
-function expectMirrors(f: F, id: Uint8Array, pseudonym?: Uint8Array) {
+async function expectMirrors(f: F, id: Uint8Array, pseudonym?: Uint8Array) {
   const parties: [string, string, PS][] = [
     ["poster", POSTER_PK, f.poster],
     ["contributor", CONTRIB_PK, { ...f.contributor, answer: encodeAnswer(LINK) }],
@@ -152,8 +166,11 @@ function expectMirrors(f: F, id: Uint8Array, pseudonym?: Uint8Array) {
   for (const [name, pk, ps] of parties) {
     const v = view(f, id, ps);
     for (const a of ACTIONS) {
-      const predicted = workActionError(a, f.board.ledger, v, nowSec());
-      const actual = f.board.errorOf(pk, ps, runAction(a, v, { pseudonym }));
+      // One instant for both sides, or a second ticking over between them, near
+      // a window's end, makes them disagree.
+      const now = nowSec();
+      const predicted = workActionError(a, f.board.ledger, v, now);
+      const actual = await f.board.errorOf(a, pk, ps, runAction(a, v, { pseudonym, now }), now);
       expect({ who: name, action: a, passes: actual === null }, `${name} ${a}: app says ${predicted}, circuit says ${actual}`).toEqual({
         who: name,
         action: a,
@@ -166,9 +183,9 @@ function expectMirrors(f: F, id: Uint8Array, pseudonym?: Uint8Array) {
 // Each mirror check runs every circuit for every party, which takes a while on a busy machine.
 describe("reviewed work, against the compiled contract", { timeout: 120_000 }, () => {
   it("applicant mode: the application code reaches the poster, who assigns; submit, review and collect", async () => {
-    const f = setup();
+    const f = await setup();
     const id = await post(f);
-    expectMirrors(f, id);
+    await expectMirrors(f, id);
 
     // The applicant makes a code under their contact key, as the app sends it; the poster opens it
     // and gets the pseudonym the circuit will store, and the key that opens their chat.
@@ -185,33 +202,33 @@ describe("reviewed work, against the compiled contract", { timeout: 120_000 }, (
     expect(app).toMatchObject({ plan: "Two weeks, one PR.", name: "ada", links: ["https://github.com/ada"], contact: publicKeyOf(c) });
     const b = await checkedPosterKey(f.board.ledger, ADDRESS, id, f.poster.posterSeed!);
     expect((await openChannel(b, app.contact, id)).thread).toEqual((await openChannel(c, posterPk, id)).thread);
-    expectMirrors(f, id, app.pseudonym);
+    await expectMirrors(f, id, app.pseudonym);
 
     const asPoster = view(f, id, f.poster);
-    f.board.call(POSTER_PK, f.poster, runAction("assign", asPoster, { pseudonym: app.pseudonym }));
+    await f.board.call("assign", POSTER_PK, f.poster, runAction("assign", asPoster, { pseudonym: app.pseudonym }));
     expect(toHex(f.board.ledger.works.lookup(id).contributor)).toEqual(toHex(contributorPseudonym(ADDRESS, id, f.contributor.sk)));
     expect(view(f, id, f.contributor).assignedToMe).toBe(true);
     expect(view(f, id, f.other).assignedToMe).toBe(false);
-    expectMirrors(f, id);
+    await expectMirrors(f, id);
 
     const withLink = { ...f.contributor, answer: encodeAnswer(LINK) };
-    f.board.call(CONTRIB_PK, withLink, runAction("submit", view(f, id, f.contributor)));
+    await f.board.call("submit", CONTRIB_PK, withLink, runAction("submit", view(f, id, f.contributor)));
     expect(await readSubmission(f.board.ledger, ADDRESS, id, f.poster.posterSeed!)).toEqual(LINK);
     expect(workItem(view(f, id, f.poster), f.board.ledger, ADDRESS, nowSec()).needs).toEqual("review");
-    expectMirrors(f, id);
+    await expectMirrors(f, id);
 
-    f.board.call(POSTER_PK, f.poster, runAction("approve", view(f, id, f.poster)));
+    await f.board.call("approve", POSTER_PK, f.poster, runAction("approve", view(f, id, f.poster)));
     expect(workItem(view(f, id, f.contributor), f.board.ledger, ADDRESS, nowSec()).needs).toEqual("collect");
-    expectMirrors(f, id);
+    await expectMirrors(f, id);
 
-    f.board.call(CONTRIB_PK, f.contributor, runAction("collect", view(f, id, f.contributor)));
+    await f.board.call("collect", CONTRIB_PK, f.contributor, runAction("collect", view(f, id, f.contributor)));
     expect(f.board.ledger.works.lookup(id).status).toEqual(WorkStatus.PAID);
     expect(workItem(view(f, id, f.contributor), f.board.ledger, ADDRESS, nowSec()).earnedHere).toBe(true);
-    expectMirrors(f, id);
+    await expectMirrors(f, id);
   });
 
   it("refuses an application code that was changed, or made for another bounty", async () => {
-    const f = setup();
+    const f = await setup();
     const a = await post(f);
     const b = await post(f);
     const code = await makeApplication(view(f, a, f.contributor), f.board.ledger.works.lookup(a).posterPk, {
@@ -229,37 +246,37 @@ describe("reviewed work, against the compiled contract", { timeout: 120_000 }, (
   });
 
   it("first to claim: claim, release, and a window that runs out", async () => {
-    const f = setup(3n);
+    const f = await setup(3n);
     // A delivery window of 62 s puts the app's window end two seconds out.
     const id = await post(f, { firstToClaim: true, deliveryWindow: 62n, reviewWindow: 62n });
-    expectMirrors(f, id);
-    f.board.call(CONTRIB_PK, f.contributor, runAction("claim", view(f, id, f.contributor)));
-    expectMirrors(f, id);
-    f.board.call(POSTER_PK, f.poster, runAction("release", view(f, id, f.poster)));
+    await expectMirrors(f, id);
+    await f.board.call("claim", CONTRIB_PK, f.contributor, runAction("claim", view(f, id, f.contributor)));
+    await expectMirrors(f, id);
+    await f.board.call("release", POSTER_PK, f.poster, runAction("release", view(f, id, f.poster)));
     expect(f.board.ledger.works.lookup(id).status).toEqual(WorkStatus.OPEN);
-    f.board.call(OTHER_PK, f.other, runAction("claim", view(f, id, f.other)));
+    await f.board.call("claim", OTHER_PK, f.other, runAction("claim", view(f, id, f.other)));
     expect(view(f, id, f.other).assignedToMe).toBe(true);
     await sleep(3);
     // Overdue: anyone can reopen.
-    expectMirrors(f, id);
+    await expectMirrors(f, id);
     expect(workActionError("reopen", f.board.ledger, view(f, id, f.contributor), nowSec())).toBeNull();
   });
 
   it("silence pays, then the collect-by time hands the reward back to the poster", async () => {
-    const f = setup(10n);
+    const f = await setup(10n);
     const id = await post(f, { reviewWindow: 62n });
     const pseudonym = contributorPseudonym(ADDRESS, id, f.contributor.sk);
-    f.board.call(POSTER_PK, f.poster, runAction("assign", view(f, id, f.poster), { pseudonym }));
+    await f.board.call("assign", POSTER_PK, f.poster, runAction("assign", view(f, id, f.poster), { pseudonym }));
     const withLink = { ...f.contributor, answer: encodeAnswer(LINK) };
-    f.board.call(CONTRIB_PK, withLink, runAction("submit", view(f, id, f.contributor)));
+    await f.board.call("submit", CONTRIB_PK, withLink, runAction("submit", view(f, id, f.contributor)));
     const reviewBy = f.board.ledger.works.lookup(id).until;
     await sleep(Number(reviewBy - nowSec()) + 1);
     // Past review-by, inside collect-by (10 s more): silence pays.
     expect(workActionError("collect", f.board.ledger, view(f, id, f.contributor), nowSec())).toBeNull();
     expect(workActionError("refund", f.board.ledger, view(f, id, f.poster), nowSec())).toEqual("Still collectable");
-    expectMirrors(f, id);
+    await expectMirrors(f, id);
     await sleep(Math.max(0, Number(reviewBy + 10n - nowSec()) + 1));
-    expectMirrors(f, id);
+    await expectMirrors(f, id);
     expect(workActionError("collect", f.board.ledger, view(f, id, f.contributor), nowSec())).toEqual("Past the collect-by time");
     expect(workActionError("refund", f.board.ledger, view(f, id, f.poster), nowSec())).toBeNull();
     expect(workItem(view(f, id, f.poster), f.board.ledger, ADDRESS, nowSec()).needs).toEqual("refund");

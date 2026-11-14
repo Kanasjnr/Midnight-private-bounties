@@ -10,7 +10,7 @@ import {
   createConstructorContext,
   sampleContractAddress,
   type CircuitContext,
-} from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
+} from "@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime";
 import * as Factor from "../../../contract/managed/bounty_factor/contract/index.js";
 import * as Signed from "../../../contract/managed/bounty_signed_record/contract/index.js";
 import { posterKeyFor } from "../../../contract/keys.js";
@@ -44,25 +44,30 @@ const COLOR = tokenColor(sampleContractAddress());
 const nowSec = (): bigint => BigInt(Math.floor(Date.now() / 1000));
 
 // The two contracts' circuits take the same context, so one board class runs either.
+// Ledger 9: the constructor and the circuits are async, hence create() and the awaits.
+type Run = (ctx: CircuitContext<PS>) => Promise<{ context: { callContext: { currentQueryContext: { state: unknown } } } }>;
 class Board {
-  data;
-  constructor(
-    private readonly t: Template,
-    poster: PS,
-  ) {
+  data!: unknown;
+  private constructor(private readonly t: Template) {}
+  static async create(t: Template, poster: PS): Promise<Board> {
+    const b = new Board(t);
     const c = t === "factor" ? new Factor.Contract(witnesses) : new Signed.Contract(witnesses);
-    this.data = c.initialState(createConstructorContext(poster, POSTER_PK), COLOR.bytes, 1n, 0n).currentContractState.data;
+    b.data = (await c.initialState(createConstructorContext(poster, POSTER_PK), COLOR.bytes, 1n, 0n)).currentContractState.data;
+    return b;
   }
   get ledger(): TemplateLedger {
-    return this.t === "factor" ? Factor.ledger(this.data) : Signed.ledger(this.data);
+    return this.t === "factor" ? Factor.ledger(this.data as never) : Signed.ledger(this.data as never);
   }
-  call(pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => { context: { currentQueryContext: { state: unknown } } }) {
-    const res = fn(createCircuitContext(ADDRESS, pk, this.data, ps));
-    this.data = res.context.currentQueryContext.state as typeof this.data;
+  private ctx(circuitId: string, pk: string, ps: PS): CircuitContext<PS> {
+    return createCircuitContext({ circuitId, contractAddress: ADDRESS, coinPublicKeyOrZswapState: pk, contractState: this.data as never, privateState: ps });
   }
-  errorOf(pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => unknown): string | null {
+  async call(circuitId: string, pk: string, ps: PS, fn: Run): Promise<void> {
+    const res = await fn(this.ctx(circuitId, pk, ps));
+    this.data = res.context.callContext.currentQueryContext.state;
+  }
+  async errorOf(circuitId: string, pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => Promise<unknown>): Promise<string | null> {
     try {
-      fn(createCircuitContext(ADDRESS, pk, this.data, ps));
+      await fn(this.ctx(circuitId, pk, ps));
       return null;
     } catch (err) {
       return err instanceof Error ? err.message : String(err);
@@ -73,22 +78,22 @@ class Board {
 const factorCircuits = new Factor.Contract(witnesses).impureCircuits;
 const signedCircuits = new Signed.Contract(witnesses).impureCircuits;
 
-async function posted(t: Template, args: (salt: Uint8Array, key: bigint) => (ctx: CircuitContext<PS>) => { context: { currentQueryContext: { state: unknown } } }) {
+async function posted(t: Template, args: (salt: Uint8Array, key: bigint) => Run) {
   const poster = newPrivateState();
-  const board = new Board(t, poster);
+  const board = await Board.create(t, poster);
   const salt = crypto.getRandomValues(new Uint8Array(32));
   const id = Factor.pureCircuits.bountyIdFor(salt, poster.sk);
   const key = await posterKeyFor(poster.posterSeed!, ADDRESS, id);
-  board.call(POSTER_PK, poster, args(salt, key));
+  await board.call("postBounty", POSTER_PK, poster, args(salt, key));
   const v = templateViews(t, board.ledger, ADDRESS, poster).find((x) => x.id.every((b, i) => b === id[i]))!;
   return { board, poster, id, v };
 }
 
-function submitAs(board: Board, t: Template, id: Uint8Array, answer: bigint[], signature: SchnorrSignature = NO_SIGNATURE) {
+async function submitAs(board: Board, t: Template, id: Uint8Array, answer: bigint[], signature: SchnorrSignature = NO_SIGNATURE) {
   const ps = { ...newPrivateState(), answer, signature };
   const fn = (ctx: CircuitContext<PS>) =>
     t === "factor" ? factorCircuits.submit(ctx, id, freshCoin(COLOR.hex, 0n)) : signedCircuits.submit(ctx, id, freshCoin(COLOR.hex, 0n));
-  return { error: board.errorOf(SOLVER_PK, ps, fn), run: () => board.call(SOLVER_PK, ps, fn) };
+  return { error: await board.errorOf("submit", SOLVER_PK, ps, fn), run: () => board.call("submit", SOLVER_PK, ps, fn) };
 }
 
 describe("factor, against the compiled contract", { timeout: 120_000 }, () => {
@@ -104,9 +109,9 @@ describe("factor, against the compiled contract", { timeout: 120_000 }, () => {
     for (const [a, b] of [["2147483629", "2147483647"], ["2147483647", "2147483629"], ["1", N.toString()], ["3", "5"]] as const) {
       const answer = factorAnswer(a, b);
       const predicted = templateSubmitError(v, nowSec(), answer);
-      expect(submitAs(board, "factor", id, answer).error === null, `${a} × ${b}`).toEqual(predicted === null);
+      expect((await submitAs(board, "factor", id, answer)).error === null, `${a} × ${b}`).toEqual(predicted === null);
     }
-    submitAs(board, "factor", id, factorAnswer("2147483647", "2147483629")).run();
+    await (await submitAs(board, "factor", id, factorAnswer("2147483647", "2147483629"))).run();
     const solved = templateViews("factor", board.ledger, ADDRESS, poster).find((x) => x.idHex === v.idHex)!;
     expect(await readTemplateAnswer(board.ledger, ADDRESS, solved, poster.posterSeed!)).toEqual([2147483629n, 2147483647n, 0n, 0n]);
   });
@@ -130,9 +135,9 @@ describe("signed record, against the compiled contract", { timeout: 120_000 }, (
       // Through the file format, as a solver would load it.
       const loaded = recordFromFile(recordToFile(r));
       const predicted = templateSubmitError(v, nowSec(), loaded.record, loaded.issuerPk);
-      expect(submitAs(board, "signed", id, loaded.record, loaded.signature).error === null, predicted ?? "passes").toEqual(predicted === null);
+      expect((await submitAs(board, "signed", id, loaded.record, loaded.signature)).error === null, predicted ?? "passes").toEqual(predicted === null);
     }
-    submitAs(board, "signed", id, cases[0]!.record, cases[0]!.signature).run();
+    await (await submitAs(board, "signed", id, cases[0]!.record, cases[0]!.signature)).run();
     const solved = templateViews("signed", board.ledger, ADDRESS, poster).find((x) => x.idHex === v.idHex)!;
     expect(await readTemplateAnswer(board.ledger, ADDRESS, solved, poster.posterSeed!)).toEqual(cases[0]!.record);
   });

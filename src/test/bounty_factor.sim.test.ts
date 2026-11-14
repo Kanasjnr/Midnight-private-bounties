@@ -3,7 +3,7 @@
 // this template adds: its checker, including the field-wraparound attack.
 
 import { describe, expect, it } from 'vitest';
-import { Sim, assertNotInPublicState, expectRejects } from '@midnight-ntwrk/example-sim';
+import { Sim, assertNotInPublicState, expectRejects } from './sim.js';
 import { Contract, ledger, pureCircuits, Status } from '../../contract/managed/bounty_factor/contract/index.js';
 import { bountyWitnesses, createBountyPrivateState, randomScalar } from '../../contract/witnesses.js';
 
@@ -43,11 +43,11 @@ const modPow = (b: bigint, e: bigint, m: bigint): bigint => {
 const color = rand32();
 const freshCoin = (value: bigint) => ({ nonce: rand32(), color, value });
 
-function setup(n: bigint = N) {
+async function setup(n: bigint = N) {
   const posterSk = rand32();
   const solverSk = rand32();
   const posterKey = randomScalar();
-  const sim = Sim.deploy({
+  const sim = await Sim.deploy({
     contract: new Contract(bountyWitnesses),
     ledger,
     privateState: createBountyPrivateState(posterSk),
@@ -56,7 +56,7 @@ function setup(n: bigint = N) {
   });
   const salt = rand32();
   const id = pureCircuits.bountyIdFor(salt, posterSk);
-  sim.call('postBounty', salt, freshCoin(REWARD), pureCircuits.posterPublicKey(posterKey), n, nowSec() + 3600n, TITLE, DETAILS, nowSec());
+  await sim.call('postBounty', salt, freshCoin(REWARD), pureCircuits.posterPublicKey(posterKey), n, nowSec() + 3600n, TITLE, DETAILS, nowSec());
   const submitAs = (answer: bigint[]) => {
     sim.as(SOLVER_PK).privateState = createBountyPrivateState(solverSk, answer);
     return sim.call('submit', id, freshCoin(STAKE));
@@ -65,14 +65,14 @@ function setup(n: bigint = N) {
 }
 
 describe('bounty_factor (in memory)', () => {
-  it('pays for true factors and stores them encrypted to the poster', () => {
-    const f = setup();
-    f.submitAs([P, Q, 0n, 0n]);
+  it('pays for true factors and stores them encrypted to the poster', async () => {
+    const f = await setup();
+    await f.submitAs([P, Q, 0n, 0n]);
     const l = f.sim.ledger();
     expect(l.bounties.lookup(f.id).status).toEqual(Status.SOLVED);
     expect(l.bounties.lookup(f.id).target).toEqual(N);
     expect(l.listings.lookup(f.id)).toMatchObject({ title: TITLE, details: DETAILS, reward: REWARD });
-    const paid = (f.sim.lastContext?.currentZswapLocalState.outputs ?? []).filter(
+    const paid = (f.sim.lastContext?.callContext.currentZswapLocalState?.outputs ?? []).filter(
       (o) => o.recipient.is_left && hex(o.recipient.left.bytes) === SOLVER_PK && o.coinInfo.value === REWARD + STAKE,
     );
     expect(paid).toHaveLength(1);
@@ -86,43 +86,43 @@ describe('bounty_factor (in memory)', () => {
     });
   });
 
-  it('rejects the trivial factorisation 1 × N, either way round', () => {
-    const f = setup();
-    expectRejects(() => f.submitAs([1n, N, 0n, 0n]), 'Wrong answer');
-    expectRejects(() => f.submitAs([N, 1n, 0n, 0n]), 'Wrong answer');
+  it('rejects the trivial factorisation 1 × N, either way round', async () => {
+    const f = await setup();
+    await expectRejects(() => f.submitAs([1n, N, 0n, 0n]), 'Wrong answer');
+    await expectRejects(() => f.submitAs([N, 1n, 0n, 0n]), 'Wrong answer');
     expect(f.sim.ledger().bounties.lookup(f.id).status).toEqual(Status.OPEN);
   });
 
-  it('pays for a factorisation whose larger factor is above 2^64 (audit L2)', () => {
-    const f = setup(3n * BIG);
-    f.submitAs([3n, BIG, 0n, 0n]);
+  it('pays for a factorisation whose larger factor is above 2^64 (audit L2)', async () => {
+    const f = await setup(3n * BIG);
+    await f.submitAs([3n, BIG, 0n, 0n]);
     expect(f.sim.ledger().bounties.lookup(f.id).status).toEqual(Status.SOLVED);
   });
 
-  it('rejects an N that no 64 × 128-bit factorisation could reach, at post time', () => {
-    expectRejects(() => setup(1n << 128n), 'cast from Field or Uint value to smaller Uint value failed');
-    expectRejects(() => setup(3n), 'N must be at least 4');
+  it('rejects an N that no 64 × 128-bit factorisation could reach, at post time', async () => {
+    await expectRejects(() => setup(1n << 128n), 'cast from Field or Uint value to smaller Uint value failed');
+    await expectRejects(() => setup(3n), 'N must be at least 4');
   });
 
-  it('rejects factors whose product is not N', () => {
-    const f = setup();
-    expectRejects(() => f.submitAs([P, Q + 2n, 0n, 0n]), 'Wrong answer');
+  it('rejects factors whose product is not N', async () => {
+    const f = await setup();
+    await expectRejects(() => f.submitAs([P, Q + 2n, 0n, 0n]), 'Wrong answer');
   });
 
-  it('rejects fake factors that only multiply to N modulo the field', () => {
-    const f = setup();
+  it('rejects fake factors that only multiply to N modulo the field', async () => {
+    const f = await setup();
     // q = N / p in the field: p × q == N in field arithmetic, but q is huge.
     const p = 3n;
     const q = (N * modPow(p, R - 2n, R)) % R;
     expect((p * q) % R).toEqual(N);
     expect(q >= 1n << 128n).toBe(true);
     // The 128-bit cast in the checker is what stops it.
-    expectRejects(() => f.submitAs([p, q, 0n, 0n]), 'cast from Field or Uint value to smaller Uint value failed');
+    await expectRejects(() => f.submitAs([p, q, 0n, 0n]), 'cast from Field or Uint value to smaller Uint value failed');
     expect(f.sim.ledger().bounties.lookup(f.id).status).toEqual(Status.OPEN);
     expect(f.sim.ledger().deliveries.member(f.id)).toBe(false);
   });
 
-  it('checkAnswer matches the in-circuit checker', () => {
+  it('checkAnswer matches the in-circuit checker', async () => {
     expect(pureCircuits.checkAnswer([P, Q, 0n, 0n], N)).toBe(true);
     expect(pureCircuits.checkAnswer([Q, P, 0n, 0n], N)).toBe(true);
     expect(pureCircuits.checkAnswer([1n, N, 0n, 0n], N)).toBe(false);

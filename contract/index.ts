@@ -1,7 +1,7 @@
 // Contract wiring for Private Bounties. Resolves against contract/managed/,
 // which `yarn compile` generates (gitignored).
 
-import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/compact-js';
+import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 

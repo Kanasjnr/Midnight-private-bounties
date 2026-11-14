@@ -4,7 +4,7 @@
 // schema tag, and a threshold on one field of the record.
 
 import { describe, expect, it, vi } from 'vitest';
-import { Sim, assertNotInPublicState, expectRejects } from '@midnight-ntwrk/example-sim';
+import { Sim, assertNotInPublicState, expectRejects } from './sim.js';
 import { Contract, ledger, pureCircuits, Status } from '../../contract/managed/bounty_signed_record/contract/index.js';
 import {
   bountyWitnesses,
@@ -44,13 +44,13 @@ const freshCoin = (value: bigint) => ({ nonce: rand32(), color, value });
 // [schema tag, amount, issued at, subject]
 const recordWithAmount = (amount: bigint, schema: bigint = SCHEMA): bigint[] => [schema, amount, nowSec(), randomScalar()];
 
-function setup(witnesses = bountyWitnesses) {
+async function setup(witnesses = bountyWitnesses) {
   const posterSk = rand32();
   const solverSk = rand32();
   const posterKey = randomScalar();
   const issuerSk = randomScalar();
   const issuerPk = pureCircuits.publicKey(issuerSk);
-  const sim = Sim.deploy({
+  const sim = await Sim.deploy({
     contract: new Contract(witnesses),
     ledger,
     privateState: createBountyPrivateState(posterSk),
@@ -63,7 +63,7 @@ function setup(witnesses = bountyWitnesses) {
     sim
       .as(POSTER_PK)
       .call('postBounty', bountySalt, freshCoin(REWARD), pureCircuits.publicKey(posterKey), issuer, SCHEMA, field, THRESHOLD, nowSec() + 3600n, TITLE, DETAILS, nowSec());
-  post(salt);
+  await post(salt);
   const submitAs = (record: bigint[], signature: SchnorrSignature) => {
     sim.as(SOLVER_PK).privateState = createBountyPrivateState(solverSk, record, signature);
     return sim.call('submit', id, freshCoin(STAKE));
@@ -73,15 +73,15 @@ function setup(witnesses = bountyWitnesses) {
 
 describe('bounty_signed_record (in memory)', () => {
   it('pays for an issuer-signed record of the right type that meets the threshold', async () => {
-    const f = setup();
+    const f = await setup();
     const record = recordWithAmount(5000n);
     const signature = await signRecord(f.issuerSk, record);
-    f.submitAs(record, signature);
+    await f.submitAs(record, signature);
     const l = f.sim.ledger();
     expect(l.bounties.lookup(f.id).status).toEqual(Status.SOLVED);
     expect(l.bounties.lookup(f.id).schema).toEqual(SCHEMA);
     expect(l.listings.lookup(f.id)).toMatchObject({ title: TITLE, details: DETAILS, reward: REWARD });
-    const paid = (f.sim.lastContext?.currentZswapLocalState.outputs ?? []).filter(
+    const paid = (f.sim.lastContext?.callContext.currentZswapLocalState?.outputs ?? []).filter(
       (o) => o.recipient.is_left && hex(o.recipient.left.bytes) === SOLVER_PK && o.coinInfo.value === REWARD + STAKE,
     );
     expect(paid).toHaveLength(1);
@@ -99,65 +99,65 @@ describe('bounty_signed_record (in memory)', () => {
   });
 
   it('accepts a record exactly at the threshold', async () => {
-    const f = setup();
+    const f = await setup();
     const record = recordWithAmount(THRESHOLD);
-    f.submitAs(record, await signRecord(f.issuerSk, record));
+    await f.submitAs(record, await signRecord(f.issuerSk, record));
     expect(f.sim.ledger().bounties.lookup(f.id).status).toEqual(Status.SOLVED);
   });
 
   it('rejects a properly signed record below the threshold', async () => {
-    const f = setup();
+    const f = await setup();
     const record = recordWithAmount(THRESHOLD - 1n);
     const signature = await signRecord(f.issuerSk, record);
-    expectRejects(() => f.submitAs(record, signature), 'Wrong answer');
+    await expectRejects(() => f.submitAs(record, signature), 'Wrong answer');
     expect(f.sim.ledger().bounties.lookup(f.id).status).toEqual(Status.OPEN);
   });
 
   it('rejects a record signed by a different issuer', async () => {
-    const f = setup();
+    const f = await setup();
     const record = recordWithAmount(5000n);
     const signature = await signRecord(randomScalar(), record);
-    expectRejects(() => f.submitAs(record, signature), 'Invalid attestation signature');
+    await expectRejects(() => f.submitAs(record, signature), 'Invalid attestation signature');
   });
 
   it('rejects a record changed after signing', async () => {
-    const f = setup();
+    const f = await setup();
     const record = recordWithAmount(1000n);
     const signature = await signRecord(f.issuerSk, record);
     const inflated = [...record];
     inflated[1] = 5000n;
-    expectRejects(() => f.submitAs(inflated, signature), 'Invalid attestation signature');
+    await expectRejects(() => f.submitAs(inflated, signature), 'Invalid attestation signature');
     expect(f.sim.ledger().deliveries.member(f.id)).toBe(false);
   });
 
   it("rejects the issuer's signature on another kind of record (audit L4)", async () => {
-    const f = setup();
+    const f = await setup();
     // Same issuer, valid signature, but signed for something else: a zk-loan
     // style attestation [score, income, months, user] or another record type.
     const attestation = [720n, 5000n, 36n, randomScalar()];
     const attestationSig = await signRecord(f.issuerSk, attestation);
-    expectRejects(() => f.submitAs(attestation, attestationSig), 'Wrong record type');
+    await expectRejects(() => f.submitAs(attestation, attestationSig), 'Wrong record type');
     const other = recordWithAmount(5000n, SCHEMA + 1n);
     const otherSig = await signRecord(f.issuerSk, other);
-    expectRejects(() => f.submitAs(other, otherSig), 'Wrong record type');
+    await expectRejects(() => f.submitAs(other, otherSig), 'Wrong record type');
   });
 
-  it('rejects bounties that check the schema tag or a field outside the record', () => {
-    const f = setup();
-    expectRejects(() => f.post(rand32(), f.issuerPk, 0n), 'Field must be 1 to 3');
-    expectRejects(() => f.post(rand32(), f.issuerPk, 4n), 'Field must be 1 to 3');
+  it('rejects bounties that check the schema tag or a field outside the record', async () => {
+    const f = await setup();
+    await expectRejects(() => f.post(rand32(), f.issuerPk, 0n), 'Field must be 1 to 3');
+    await expectRejects(() => f.post(rand32(), f.issuerPk, 4n), 'Field must be 1 to 3');
   });
 
-  it('rejects an issuer key nobody should trust (audit L1)', () => {
-    const f = setup();
-    expectRejects(() => f.post(rand32(), { x: 0n, y: 1n }), 'Invalid public key');
+  it('rejects an issuer key nobody should trust (audit L1)', async () => {
+    const f = await setup();
+    await expectRejects(() => f.post(rand32(), { x: 0n, y: 1n }), 'Invalid public key');
   });
 
-  it('rejects a non-canonical challenge reduction', () => {
+  it('rejects a non-canonical challenge reduction', async () => {
     // A prover who supplies the second of two valid (q, r) representations of
     // the challenge hash is stopped. The reduction is checked before the
     // signature, so the announcement needn't belong to a valid signature.
-    const cheat = setup({
+    const cheat = await setup({
       ...bountyWitnesses,
       getSchnorrReduction: ({ privateState }, h: bigint) => [privateState, [(h + R) / TWO_248, (h + R) % TWO_248]],
     });
@@ -171,10 +171,10 @@ describe('bounty_signed_record (in memory)', () => {
       if (h + R < 116n * TWO_248) record = candidate;
     }
     expect(record).toHaveLength(4);
-    expectRejects(() => cheat.submitAs(record, { announcement, response: 1n }), 'Non-canonical challenge reduction');
+    await expectRejects(() => cheat.submitAs(record, { announcement, response: 1n }), 'Non-canonical challenge reduction');
   });
 
-  it('meetsThreshold matches the in-circuit threshold check', () => {
+  it('meetsThreshold matches the in-circuit threshold check', async () => {
     expect(pureCircuits.meetsThreshold(recordWithAmount(5000n), FIELD, THRESHOLD)).toBe(true);
     expect(pureCircuits.meetsThreshold(recordWithAmount(2999n), FIELD, THRESHOLD)).toBe(false);
   });
