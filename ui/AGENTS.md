@@ -1,4 +1,4 @@
-# AGENTS.md — generated browser UIs (`yarn new:ui`)
+# AGENTS.md — generated browser UIs (`npm run new:ui`)
 
 Instructions for agents adding or changing a browser frontend for an example in
 this repo. Every generated UI runs its example's existing contract and
@@ -7,22 +7,27 @@ one (`examples/private-bounties/ui`), see `README.md` next to this file.
 
 This file is template-owned. Its source is `templates/ui/AGENTS.md`, and
 every generated UI gets an identical copy. Edit the template, then run
-`yarn new:ui --sync-all`.
+`npm run new:ui -- --sync-all`.
 
-**Verified against:** `midnight-js-*` 4.1.1, `@midnight-ntwrk/dapp-connector-api`
-4.0.1, Vite 6.4.3, vitest 4.1, React 19, Node 22, a Midnight wallet extension
-on the local devnet.
+`templates/ui/` is the interim Ledger 9 copy of mnkit's UI template
+(`packages/mnkit/templates/ui/`, still on Ledger 8 for `mnkit add ui`). It goes
+away when mnkit moves to Ledger 9; until then, change this copy, not mnkit's.
+
+**Verified against:** `midnight-js-*` 5.0.0 (Ledger 9),
+`@midnight-ntwrk/dapp-connector-api` 4.0.1, Vite 6.4.4, vitest 5, React 19,
+Node 22: typecheck, unit tests and build. The Ledger 9 template has not yet
+been run in a browser with a wallet extension on a Ledger 9 network.
 
 ## Quick recipe
 
 ```bash
-nvm use                                  # Node 22; the generator refuses older
-yarn new:ui <name> --dry-run             # preview: forms, TODOs, storage, ⚠ lines
-yarn new:ui <name> [--private-state memory|persistent]
-yarn install                             # commit the yarn.lock it writes
-yarn workspace @midnight-ntwrk/example-<name>-ui typecheck
-yarn workspace @midnight-ntwrk/example-<name>-ui test:unit
-yarn workspace @midnight-ntwrk/example-<name>-ui build
+nvm use                             # Node 22; the generator refuses older
+npm run new:ui -- <name> --dry-run  # preview: forms, TODOs, storage, ⚠ lines
+npm run new:ui -- <name> [--private-state memory|persistent]
+npm install                             # commit the package-lock.json it writes
+npm run typecheck -w @midnight-ntwrk/example-<name>-ui
+npm run test:unit -w @midnight-ntwrk/example-<name>-ui
+npm run build -w @midnight-ntwrk/example-<name>-ui
 ```
 
 - **Your code goes in the seed files only** (§3):
@@ -30,7 +35,7 @@ yarn workspace @midnight-ntwrk/example-<name>-ui build
   `src/__tests__/<name>-circuits.test.ts`, `README.md`, and
   `verification.json`. Everything else is template-owned (§2), and CI fails
   if an example's copy drifts.
-- **Generic changes go in `templates/ui/`**, then `yarn new:ui --sync-all`.
+- **Generic changes go in `templates/ui/`**, then `npm run new:ui -- --sync-all`.
 - **Don't** scaffold with `/midnight-dapp-dev:init`, copy another UI, or use
   `examples/zk-loan/ui` as a reference (it's hand-built and not
   authoritative). Check what you reuse against the installed types in
@@ -79,10 +84,10 @@ provider swap and the bundler, not in contract calls.
 ## Recipe in detail
 
 UIs are scaffolded by a script, not by hand. It is **phase 2**, after
-`yarn new:example` (phase 1). Run it once the example's in-memory gate passes
-(`typecheck`, `test:sim`, `yarn spec:lint`): it reads the compiled output, and
+`npm run new:example` (phase 1). Run it once the example's in-memory gate passes
+(`typecheck`, `test:sim`, `npm run spec:lint`): it reads the compiled output, and
 `new:ui` refuses to create a UI without that gate's stamp for the current
-sources (`.gates/sim.json`, written by `yarn pipeline`). The devnet suite runs
+sources (`.gates/sim.json`, written by `npm run pipeline`). The devnet suite runs
 in the background meanwhile and must pass before the UI is called done. The
 commands are in the quick recipe above; `--contract <managed-dir>` picks one
 contract when an example compiles several.
@@ -121,11 +126,11 @@ It refuses to run when:
 - more than one contract is compiled and `--contract` isn't given (e.g.
   `shielded-chips`). The generator renders one contract, the primary; wire
   the others in the seed files (see §5).
-- the running Node is older than the root `engines.node` (22). Yarn 4 doesn't
+- the running Node is older than the root `engines.node` (22). npm doesn't
   enforce `engines`; run `nvm use` first. The UI's `copy:zk` (the first step
   of `dev` and `build`) has the same guard.
 
-**Preview first:** `yarn new:ui <name> --dry-run [flags]` prints the same
+**Preview first:** `npm run new:ui -- <name> --dry-run [flags]` prints the same
 summary and writes nothing (it works even when `ui/` exists). Use it to
 choose `--private-state` before creating, because create refuses to overwrite
 `ui/`.
@@ -154,7 +159,7 @@ this `AGENTS.md`.
 - `ui/.template-files` lists the template-owned files as of the last create or
   sync. Don't edit it. `ui/new-ui.json` holds the create-time choices (see
   §1); edit it only to change one, then `--sync`.
-- CI runs `yarn new:ui <name> --check` for every generated UI (found by
+- CI runs `npm run new:ui -- <name> --check` for every generated UI (found by
   `new-ui.json`), then typecheck,
   unit tests and a production build. `--check` fails when an example's copy
   differs from the template, when `.template-files` is missing or out of date,
@@ -163,11 +168,11 @@ this `AGENTS.md`.
   `verification.json` and fails when the table in `templates/ui/VERIFIED.md`
   is stale (see the Verification checklist).
 - To change generic UI behaviour, edit `templates/ui/`. Then run
-  `yarn new:ui --sync-all`. It syncs **every** generated UI, including one you
+  `npm run new:ui -- --sync-all`. It syncs **every** generated UI, including one you
   created earlier in the same change. If a UI's `package.json` changed, it
-  then runs `yarn install`; commit the `yarn.lock` it writes. Review the
-  `git diff`. `yarn new:ui --check-all` is the local equivalent of CI's drift
-  check, plus `yarn install --immutable`.
+  then runs `npm install`; commit the `package-lock.json` it writes. Review the
+  `git diff`. `npm run new:ui -- --check-all` is the local equivalent of CI's drift
+  check, plus `npm ci --dry-run`.
 - If a change is truly example-specific, it belongs in a seed file, not in a
   template-owned one.
 
@@ -303,22 +308,27 @@ battleship's `ShipForm`.
 
 ### 4. Pins (already set by the template; keep them)
 
-- **Exact versions:** `midnight-js-*` `4.1.1` and
+- **Exact versions:** `midnight-js-*` `5.0.0` (`midnight-js-network-id`
+  `5.0.0-rc.5`: it has no 5.0.0),
+  `@midnightntwrk/wallet-sdk-address-format` `4.0.0` and
   `@midnight-ntwrk/dapp-connector-api` `4.0.1`.
-- **No separate runtime packages:** no direct `ledger-v8`, `compact-runtime` or
+- **`@swc/core` `1.15.47` under `vite-plugin-top-level-await`** (an override
+  in `toolchain.json`): the plugin's 1.6.0, the latest, fails the production
+  build with ``missing field `type` `` on `@swc/core` 1.16.
+- **No separate runtime packages:** no direct `ledger-v9`, `compact-runtime` or
   `compact-js`. Import them via
   `@midnight-ntwrk/midnight-js-protocol/{ledger,compact-runtime,compact-js}`.
-- **Vite:** `"vite": "6.4.3"`, matching the hoisted root Vite (see root
+- **Vite:** `"vite": "6.4.4"`, matching the hoisted root Vite (see root
   `AGENTS.md`).
 - **Scripts:** only `copy:zk`, `dev`, `build`, `preview`, `typecheck` and
   `test:unit`. **Never** add `compile`, `test`, `test:local`, `env:up` or
   `wait:dust`: root aggregates would pull the UI into CI's local-network runs.
-  `copy:zk` is chained explicitly because Yarn 4 doesn't run `pre*` scripts.
+  `copy:zk` is chained explicitly, not a `pre*` hook, so the order shows in the script.
 
-After `yarn install`, check the hoisting didn't move:
+After `npm install`, check the hoisting didn't move:
 
 ```bash
-node -p "require('./node_modules/vite/package.json').version"   # 6.4.3
+node -p "require('./node_modules/vite/package.json').version"   # 6.4.4
 node -p "require('./node_modules/bn.js/package.json').version"  # 5.2.5
 ```
 
@@ -399,9 +409,9 @@ A new wallet has 0 DUST, and the first tx fails at balancing with
 no "register for DUST" button (Lace, for one, has none), and the local devnet
 has no faucet.
 
-The root script `yarn fund:wallet <mn_dust_…> [mn_addr_…]` solves this
-without any wallet action. It runs from anywhere in the repo, for any
-generated UI. The source is `packages/fast-sync/scripts/fund-wallet.ts`, with
+The root script `npm run fund:wallet <mn_dust_…> [mn_addr_…]` solves this
+without any wallet action. Run it from the repo root (inside a workspace, npm
+finds only that workspace's scripts); it works for any generated UI. The source is `packages/fast-sync/scripts/fund-wallet.ts`, with
 `transferNight` / `registerNightForDust` in `packages/fast-sync/src/local-funding.ts`.
 1. Genesis (Alice) sends NIGHT to a throwaway sponsor wallet. There is one
    sponsor per browser wallet, derived from its DUST address.
@@ -430,8 +440,8 @@ suites' DUST. Don't copy it into an example; extend the shared one.
   `undefined` once bundled for the browser (named import from a default-only
   module). Pass `window.WebSocket`. The Vite build warning about it remains
   and is harmless.
-- **`optimizeDeps.exclude`:** it must be exactly `ledger-v8`,
-  `onchain-runtime-v3` and `midnight-js-protocol`.
+- **`optimizeDeps.exclude`:** it must be exactly `@midnightntwrk/ledger-v9`,
+  `@midnightntwrk/onchain-runtime-v4` and `midnight-js-protocol`.
   - Excluding `midnight-js-protocol` is required because esbuild can't
     enumerate `export *` from an excluded package.
   - Excluding `compact-runtime` breaks its CommonJS `object-inspect` import.
@@ -447,7 +457,7 @@ suites' DUST. Don't copy it into an example; extend the shared one.
   to. Let the user pick it before connecting; everything else comes from
   `getConfiguration()`. The picker offers `undeployed`, `preview` and
   `preprod`; `mainnet` is opt-in per UI with `"networks": ["mainnet"]` in
-  `ui/new-ui.json`, then `yarn new:ui <name> --sync`. Opt in only for a UI
+  `ui/new-ui.json`, then `npm run new:ui -- <name> --sync`. Opt in only for a UI
   that has been run on mainnet: every deploy and call there spends real DUST.
 - **Error shapes:** connector errors are plain objects
   (`type === "DAppConnectorAPIError"`; use no `instanceof`). Wallet fee
@@ -472,6 +482,16 @@ suites' DUST. Don't copy it into an example; extend the shared one.
   (private-party's `_secret`), the generic form offers a hex input for it.
   Replace that form. Keep the secret in private state and pass it from there,
   as the Node test does.
+- **compact-runtime 0.21 is async:** `initialState` and every circuit return
+  a Promise, and `createCircuitContext` takes one options object
+  (`{ circuitId, contractAddress, coinPublicKeyOrZswapState, contractState,
+  privateState }`). The query context and private state sit under
+  `context.callContext`. Await every call (`await expect(p).rejects.toThrow()`
+  for a rejection); the seed circuits tests show the pattern.
+- **Era-tagged contract state:** Midnight.js 5 serves each contract state as
+  a `ContractStateRead`, whose `contractState` is serialized and tagged with
+  the ledger era that wrote it. Decode it with `contractStateData()` from
+  `src/midnight/providers.ts`.
 - **In-memory contract balance is empty:** `createCircuitContext` starts
   `block.balance` empty, and a `receiveUnshielded` in one in-memory call
   doesn't credit the next. So an `unshieldedBalanceGte` assert always fails
@@ -480,7 +500,7 @@ suites' DUST. Don't copy it into an example; extend the shared one.
   point (see private-party's circuits test).
 - **Token movements aren't ledger state:** mints, sends and receives don't
   show up in `ledger()`. In memory, read them from
-  `context.currentQueryContext.effects` (`unshieldedMints`,
+  `context.callContext.currentQueryContext.effects` (`unshieldedMints`,
   `unshieldedInputs`, `unshieldedOutputs`, `claimedUnshieldedSpends`,
   `shieldedMints`, `claimedShieldedReceives`, ...). Those Maps are keyed by
   objects (`{ tag: "unshielded", raw }`, `{ tag: "user", address }`), so
@@ -500,11 +520,11 @@ suites' DUST. Don't copy it into an example; extend the shared one.
 
 Run the checks in order, and report which ones you actually ran.
 
-1. `yarn install` (then `yarn install --immutable` passes), and check the
+1. `npm install` (then `npm ci` passes), and check the
    hoisting as in step 2.
-2. `yarn workspace @midnight-ntwrk/example-<name>-ui typecheck`: the real
+2. `npm run typecheck -w @midnight-ntwrk/example-<name>-ui`: the real
    proof that provider wiring matches the SDK types.
-3. `yarn workspace @midnight-ntwrk/example-<name>-ui test:unit`, with at least:
+3. `npm run test:unit -w @midnight-ntwrk/example-<name>-ui`, with at least:
    - wallet connect, error and selection tests (mocked `window.midnight`)
    - a test that the proving toggle picks the right factory (mock the two
      proof-provider modules)
@@ -512,32 +532,33 @@ Run the checks in order, and report which ones you actually ran.
      circuits** in memory (`createConstructorContext`,
      `createCircuitContext`, `contract.impureCircuits.<c>`) and checks your
      ledger observable decodes the resulting states
-4. `yarn workspace @midnight-ntwrk/example-<name>-ui build`.
-5. No regression: the example's `yarn env:up && yarn wait:dust && yarn test:local`
+4. `npm run build -w @midnight-ntwrk/example-<name>-ui`.
+5. No regression: the example's `npm run env:up && npm run wait:dust && npm run test:local`
    still passes, and so does one other example's vitest run.
-6. In the browser (`yarn dev`), before involving the wallet:
+6. In the browser (`npm run dev`), before involving the wallet:
    - In the page console, run a circuit in memory (this proves WASM loads).
      The runtime isn't pre-bundled, so import it by its `/@id/` path:
      ```js
-     const rt = await import('/@id/@midnight-ntwrk/midnight-js-protocol/compact-runtime');
+     const rt = await import('/@id/@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime');
      const m = await import('/src/midnight/contract.ts');
      const c = new m.Contract({});  // or the witnesses, via '/@fs/<abs path>/contract/witnesses.ts'
      const pk = '00'.repeat(32);
-     const { currentContractState: s } = c.initialState(rt.createConstructorContext({}, pk));
-     const ctx = rt.createCircuitContext(rt.dummyContractAddress(), pk, s.data, {});
-     m.ledger(c.impureCircuits.<circuit>(ctx, ...args).context.currentQueryContext.state);
+     const { currentContractState: s } = await c.initialState(rt.createConstructorContext({}, pk));
+     const ctx = rt.createCircuitContext({ circuitId: '<circuit>', contractAddress: rt.dummyContractAddress(),
+       coinPublicKeyOrZswapState: pk, contractState: s.data, privateState: {} });
+     m.ledger((await c.impureCircuits.<circuit>(ctx, ...args)).context.callContext.currentQueryContext.state);
      ```
    - `fetch('/managed/<name>/keys/<circuit>.verifier')` returns binary data,
      not `text/html`. (Vite may send no content-type at all; that's fine.
      Check that the byte length matches the file.)
    - With `persistent` private state: in the console,
      `persistentPrivateStateProvider({ accountId, passphrase })` from
-     `/src/midnight/private-state.ts`, `setContractAddress`, `set` a state,
-     reload, open it again and `get` it back. Then check that a wrong
+     `/src/midnight/private-state.ts`, `forContract(<address>)`, `set` a
+     state, reload, open it again and `get` it back. Then check that a wrong
      passphrase throws `WrongPassphraseError`. Delete the test database
      afterwards (`indexedDB.deleteDatabase("level-js-<name>-ui-private-state")`).
 7. With the wallet (needs a human for the approvals):
-   - `yarn env:up`, then `yarn fund:wallet <mn_dust_…> [mn_addr_…]`.
+   - `npm run env:up`, then `npm run fund:wallet <mn_dust_…> [mn_addr_…]`.
    - Deploy, call each circuit, and watch the ledger update, in both proving
      modes.
    - Join from a second profile.
@@ -547,7 +568,7 @@ Run the checks in order, and report which ones you actually ran.
    - Then repeat on preprod.
 8. Record what you ran. In `ui/verification.json`, set each step you ran to
    `verified` (or `partial`), with a `date` and `notes` saying exactly what
-   ran. Then run `yarn new:ui <name> --sync`, which regenerates the table in
+   ran. Then run `npm run new:ui -- <name> --sync`, which regenerates the table in
    `templates/ui/VERIFIED.md`. Name the wallet you used in each wallet
    step's `notes`. Once the wallet checklist in `ui/README.md` passes, delete
    it: `--check` refuses a `walletCalls: verified` while it's still there.
