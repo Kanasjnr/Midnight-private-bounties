@@ -42,14 +42,14 @@ export function buildProviders(
   wallet: MidnightWalletProvider,
   zkConfigPath: string,
   config: NetworkConfig,
-  storeSuffix = 'pb-q16',
+  storeSuffix = 'private-bounties',
 ): BountyProviders {
   const zkConfigProvider = new NodeZkConfigProvider<string>(zkConfigPath);
   return {
     privateStateProvider: levelPrivateStateProvider({
       privateStateStoreName: `${storeSuffix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       // this password has requirements (capital/special chars >= 3)
-      privateStoragePasswordProvider: () => 'PrivateBounties-Q16-Pass',
+      privateStoragePasswordProvider: () => 'PrivateBounties-Test-Pass',
       accountId: wallet.getCoinPublicKey(),
     }),
     publicDataProvider: indexerPublicDataProvider(
