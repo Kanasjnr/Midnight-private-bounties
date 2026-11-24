@@ -4,7 +4,7 @@
 // factor contract: a post, then a solve, read back as two events naming the
 // bounty, with the oldest state only as context.
 import { describe, expect, it } from "vitest";
-import { createCircuitContext, createConstructorContext, sampleContractAddress } from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
+import { createCircuitContext, createConstructorContext, sampleContractAddress } from "@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime";
 import * as Factor from "../../../contract/managed/bounty_factor/contract/index.js";
 import { posterKeyFor } from "../../../contract/keys.js";
 import { witnesses } from "../../../contract/witnesses.js";
@@ -20,7 +20,9 @@ describe("activity feed", () => {
   it("names the bounty each action touched", async () => {
     const poster = newPrivateState();
     const c = new Factor.Contract(witnesses);
-    let data = c.initialState(createConstructorContext(poster, "b0".repeat(32)), COLOR.bytes, 1n, 0n).currentContractState.data;
+    let data = (await c.initialState(createConstructorContext(poster, "b0".repeat(32)), COLOR.bytes, 1n, 0n)).currentContractState.data;
+    const ctx = (circuitId: string, pk: string, privateState: typeof poster) =>
+      createCircuitContext({ circuitId, contractAddress: ADDRESS, coinPublicKeyOrZswapState: pk, contractState: data, privateState });
     const step = (circuit: string, at: number): Step => ({ kind: "factor", address: ADDRESS, circuit, at, hash: `h${at}`, bounties: snapshot("factor", ADDRESS, data) });
     const steps: Step[] = [step("deploy", 1)];
 
@@ -28,14 +30,16 @@ describe("activity feed", () => {
     const id = Factor.pureCircuits.bountyIdFor(salt, poster.sk);
     const key = await posterKeyFor(poster.posterSeed!, ADDRESS, id);
     const N = 2147483647n * 2147483629n;
-    data = c.impureCircuits.postBounty(
-      createCircuitContext(ADDRESS, "b0".repeat(32), data, poster),
-      salt, freshCoin(COLOR.hex, 100n), Factor.pureCircuits.posterPublicKey(key), N, nowSec() + 3600n, "Factor it", "Two primes.", nowSec() - 60n,
-    ).context.currentQueryContext.state as typeof data;
+    data = (
+      await c.impureCircuits.postBounty(
+        ctx("postBounty", "b0".repeat(32), poster),
+        salt, freshCoin(COLOR.hex, 100n), Factor.pureCircuits.posterPublicKey(key), N, nowSec() + 3600n, "Factor it", "Two primes.", nowSec() - 60n,
+      )
+    ).context.callContext.currentQueryContext.state as typeof data;
     steps.unshift(step("postBounty", 2));
 
     const solver = { ...newPrivateState(), answer: factorAnswer("2147483647", "2147483629") };
-    data = c.impureCircuits.submit(createCircuitContext(ADDRESS, "a0".repeat(32), data, solver), id, freshCoin(COLOR.hex, 0n)).context.currentQueryContext.state as typeof data;
+    data = (await c.impureCircuits.submit(ctx("submit", "a0".repeat(32), solver), id, freshCoin(COLOR.hex, 0n))).context.callContext.currentQueryContext.state as typeof data;
     steps.unshift(step("submit", 3));
 
     const events = eventsFrom(steps);

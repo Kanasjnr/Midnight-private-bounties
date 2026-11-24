@@ -21,7 +21,7 @@ import {
   sampleContractAddress,
   type CircuitContext,
   type CircuitResults,
-} from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
+} from "@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { posterKeyFor } from "../../../contract/keys.js";
 import { NO_ANSWER, witnesses } from "../../../contract/witnesses.js";
@@ -78,26 +78,30 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** The contract between calls: its state, and a call that advances it. */
 class Board {
-  data;
+  data!: Awaited<ReturnType<typeof contract.initialState>>["currentContractState"]["data"];
   // The deploy-time minimums. The refund test waits out a short deadline, so
-  // no minimum window by default.
-  constructor(poster: PS, minReward = 1n, minWindow = 0n) {
-    this.data = contract.initialState(createConstructorContext(poster, POSTER_PK), COLOR.bytes, minReward, minWindow)
-      .currentContractState.data;
+  // no minimum window by default. Ledger 9's constructor is async, hence create().
+  static async create(poster: PS, minReward = 1n, minWindow = 0n): Promise<Board> {
+    const b = new Board();
+    b.data = (await contract.initialState(createConstructorContext(poster, POSTER_PK), COLOR.bytes, minReward, minWindow)).currentContractState.data;
+    return b;
   }
   get ledger(): Ledger {
     return ledger(this.data);
   }
+  private ctx(circuitId: string, pk: string, ps: PS): CircuitContext<PS> {
+    return createCircuitContext({ circuitId, contractAddress: ADDRESS, coinPublicKeyOrZswapState: pk, contractState: this.data, privateState: ps });
+  }
   /** Run a circuit as (coin key, private state); on success the board moves on. */
-  call<R>(pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => CircuitResults<PS, R>): CircuitResults<PS, R> {
-    const res = fn(createCircuitContext(ADDRESS, pk, this.data, ps));
-    this.data = res.context.currentQueryContext.state;
+  async call<R>(circuitId: string, pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => Promise<CircuitResults<PS, R>>): Promise<CircuitResults<PS, R>> {
+    const res = await fn(this.ctx(circuitId, pk, ps));
+    this.data = res.context.callContext.currentQueryContext.state as typeof this.data;
     return res;
   }
   /** The circuit's error message, or null if it would succeed (state unchanged). */
-  errorOf(pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => unknown): string | null {
+  async errorOf(circuitId: string, pk: string, ps: PS, fn: (ctx: CircuitContext<PS>) => Promise<unknown>): Promise<string | null> {
     try {
-      fn(createCircuitContext(ADDRESS, pk, this.data, ps));
+      await fn(this.ctx(circuitId, pk, ps));
       return null;
     } catch (err) {
       return err instanceof Error ? err.message : String(err);
@@ -110,7 +114,7 @@ async function post(board: Board, poster: PS, answer = ANSWER, deadline = nowSec
   const salt = crypto.getRandomValues(new Uint8Array(32));
   const id = pureCircuits.bountyIdFor(salt, poster.sk);
   const key = await posterKeyFor(poster.posterSeed!, ADDRESS, id);
-  board.call(POSTER_PK, poster, (ctx) =>
+  await board.call("postBounty", POSTER_PK, poster, (ctx) =>
     c.postBounty(ctx, salt, freshCoin(COLOR.hex, REWARD), pureCircuits.posterPublicKey(key), pureCircuits.answerHash(encodeAnswer(answer)), deadline, TITLE, DETAILS, postTime()),
   );
   return id;
@@ -124,7 +128,7 @@ function row(board: Board, id: Uint8Array, ps: PS | null): BountyView {
 }
 
 /** actionError and the circuit agree: both pass, or the circuit fails with that reason. */
-function expectMirrors(
+async function expectMirrors(
   board: Board,
   action: Exclude<Action, "decrypt">,
   pk: string,
@@ -134,7 +138,7 @@ function expectMirrors(
 ) {
   const predicted = actionError(action, board.ledger, row(board, id, ps), nowSec(), answerText);
   const solverPs = answerText === undefined ? ps : { ...ps, answer: encodeAnswer(answerText) };
-  const actual = board.errorOf(pk, solverPs, (ctx) =>
+  const actual = await board.errorOf(action, pk, solverPs, (ctx) =>
     action === "submit" ? c.submit(ctx, id, freshCoin(COLOR.hex, 0n)) : c.refund(ctx, id),
   );
   if (predicted === null) expect(actual).toBeNull();
@@ -143,7 +147,7 @@ function expectMirrors(
 
 /** Coin outputs of a call that pay `pk` exactly `value`. */
 function paid(res: CircuitResults<PS, unknown>, pk: string, value: bigint) {
-  return res.context.currentZswapLocalState.outputs.filter(
+  return (res.context.callContext.currentZswapLocalState?.outputs ?? []).filter(
     (o) => o.recipient.is_left && toHex(o.recipient.left.bytes) === pk && o.coinInfo.value === value,
   );
 }
@@ -151,8 +155,8 @@ function paid(res: CircuitResults<PS, unknown>, pk: string, value: bigint) {
 // Each circuit call runs the real contract, and the refund test waits out a
 // deadline, so these take seconds each; more on a busy machine.
 describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
-  it("constructs with the token color the UI derives, and decodes an empty board", () => {
-    const board = new Board(newPrivateState());
+  it("constructs with the token color the UI derives, and decodes an empty board", async () => {
+    const board = await Board.create(newPrivateState());
     // The panel reads the color back as toHex(rewardColor): it must be the token's hex.
     expect(toHex(board.ledger.rewardColor)).toBe(COLOR.hex);
     expect(bountyViews(board.ledger, ADDRESS, null)).toEqual([]);
@@ -161,7 +165,7 @@ describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
   it("posts, solves with a zero-value coin, and lets only the poster decrypt", async () => {
     const poster = newPrivateState();
     const solver = newPrivateState();
-    const board = new Board(poster);
+    const board = await Board.create(poster);
     const id = await post(board, poster);
 
     // The board: open, escrowed, and the poster's own (from the pseudonym alone).
@@ -172,14 +176,14 @@ describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
     expect(row(board, id, null)).toMatchObject({ mine: false });
 
     // Wrong answers, the poster's refund and a decrypt are all refused, as predicted.
-    expectMirrors(board, "submit", SOLVER_PK, solver, id, "the treasure is under the old elm tree");
-    expectMirrors(board, "refund", POSTER_PK, poster, id);
-    expectMirrors(board, "refund", SOLVER_PK, solver, id);
+    await expectMirrors(board, "submit", SOLVER_PK, solver, id, "the treasure is under the old elm tree");
+    await expectMirrors(board, "refund", POSTER_PK, poster, id);
+    await expectMirrors(board, "refund", SOLVER_PK, solver, id);
     expect(actionError("decrypt", board.ledger, row(board, id, poster), nowSec())).toBe("Nothing delivered yet");
 
     // Surrounding whitespace doesn't matter: the UI trims before encoding.
-    expectMirrors(board, "submit", SOLVER_PK, solver, id, `  ${ANSWER}\n`);
-    const res = board.call(SOLVER_PK, { ...solver, answer: encodeAnswer(ANSWER) }, (ctx) =>
+    await expectMirrors(board, "submit", SOLVER_PK, solver, id, `  ${ANSWER}\n`);
+    const res = await board.call("submit", SOLVER_PK, { ...solver, answer: encodeAnswer(ANSWER) }, (ctx) =>
       c.submit(ctx, id, freshCoin(COLOR.hex, 0n)),
     );
     // One payout coin, worth exactly the reward, to the solver.
@@ -187,8 +191,8 @@ describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
     // The listing keeps the reward after the payout empties the escrow.
     expect(board.ledger.escrows.member(id)).toBe(false);
     expect(row(board, id, poster)).toMatchObject({ status: Status.SOLVED, reward: REWARD, mine: true });
-    expectMirrors(board, "submit", SOLVER_PK, newPrivateState(), id, ANSWER);
-    expectMirrors(board, "refund", POSTER_PK, poster, id);
+    await expectMirrors(board, "submit", SOLVER_PK, newPrivateState(), id, ANSWER);
+    await expectMirrors(board, "refund", POSTER_PK, poster, id);
 
     // Only the poster's seed opens the delivery.
     expect(actionError("decrypt", board.ledger, row(board, id, poster), nowSec())).toBeNull();
@@ -200,23 +204,23 @@ describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
   it("refunds the poster after the deadline, and nobody else", async () => {
     const poster = newPrivateState();
     const solver = newPrivateState();
-    const board = new Board(poster);
+    const board = await Board.create(poster);
     const id = await post(board, poster, ANSWER, nowSec() + 2n);
-    expectMirrors(board, "refund", POSTER_PK, poster, id);
+    await expectMirrors(board, "refund", POSTER_PK, poster, id);
     await sleep(3_000);
 
-    expectMirrors(board, "submit", SOLVER_PK, solver, id, ANSWER);
-    expectMirrors(board, "refund", SOLVER_PK, solver, id);
-    expectMirrors(board, "refund", POSTER_PK, poster, id);
-    const res = board.call(POSTER_PK, poster, (ctx) => c.refund(ctx, id));
+    await expectMirrors(board, "submit", SOLVER_PK, solver, id, ANSWER);
+    await expectMirrors(board, "refund", SOLVER_PK, solver, id);
+    await expectMirrors(board, "refund", POSTER_PK, poster, id);
+    const res = await board.call("refund", POSTER_PK, poster, (ctx) => c.refund(ctx, id));
     expect(paid(res, POSTER_PK, REWARD)).toHaveLength(1);
     expect(row(board, id, poster)).toMatchObject({ status: Status.REFUNDED, reward: REWARD });
-    expectMirrors(board, "refund", POSTER_PK, poster, id);
+    await expectMirrors(board, "refund", POSTER_PK, poster, id);
   });
 
   it("gives every bounty its own pseudonym and key", async () => {
     const poster = newPrivateState();
-    const board = new Board(poster);
+    const board = await Board.create(poster);
     const [a, b] = [await post(board, poster), await post(board, poster)];
     const [ba, bb] = [board.ledger.bounties.lookup(a), board.ledger.bounties.lookup(b)];
     expect(toHex(ba.poster)).not.toBe(toHex(bb.poster));
@@ -226,13 +230,13 @@ describe("private-bounties contract (in memory)", { timeout: 60_000 }, () => {
 
   it("postError and the circuit agree on the reward and window checks", async () => {
     const poster = newPrivateState();
-    const board = new Board(poster, 50n, 3600n);
+    const board = await Board.create(poster, 50n, 3600n);
     const key = await posterKeyFor(poster.posterSeed!, ADDRESS, crypto.getRandomValues(new Uint8Array(32)));
     const postedAt = postTime();
     for (const [reward, window] of [[49n, 7200n], [50n, 3599n], [0n, 7200n], [50n, 3600n], [51n, 4000n]] as const) {
       const deadline = postedAt + window;
       const predicted = postError(board.ledger, reward, deadline, postedAt);
-      const actual = board.errorOf(POSTER_PK, poster, (ctx) =>
+      const actual = await board.errorOf("postBounty", POSTER_PK, poster, (ctx) =>
         c.postBounty(ctx, crypto.getRandomValues(new Uint8Array(32)), freshCoin(COLOR.hex, reward), pureCircuits.posterPublicKey(key),
           pureCircuits.answerHash(encodeAnswer(ANSWER)), deadline, TITLE, DETAILS, postedAt),
       );

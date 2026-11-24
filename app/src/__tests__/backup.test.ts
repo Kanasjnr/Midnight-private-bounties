@@ -36,10 +36,8 @@ describe("key backup", { timeout: 240_000 }, () => {
     const a = browserStore("a", PASS_A);
     const verified = newPrivateState();
     const work = newPrivateState();
-    a.setContractAddress(board.verified);
-    await a.set(PRIVATE_STATE_ID, verified);
-    a.setContractAddress(board.work!);
-    await a.set(PRIVATE_STATE_ID, work);
+    await a.forContract(board.verified).set(PRIVATE_STATE_ID, verified);
+    await a.forContract(board.work!).set(PRIVATE_STATE_ID, work);
     // The signed-record contract is on the board but this browser never joined it.
 
     const backup = await makeBackup(a, "preview", board, "44".repeat(32));
@@ -53,14 +51,11 @@ describe("key backup", { timeout: 240_000 }, () => {
     // A wrong passphrase writes nothing.
     const wrong = await restoreBackup(b, file, PASS_B).catch((e: unknown) => e);
     expect(restoreError(wrong)).toContain("doesn't open this backup");
-    b.setContractAddress(board.verified);
-    expect(await b.get(PRIVATE_STATE_ID)).toBeNull();
+    expect(await b.forContract(board.verified).get(PRIVATE_STATE_ID)).toBeNull();
 
     expect(await restoreBackup(b, file, PASS_A)).toEqual(2);
-    b.setContractAddress(board.verified);
-    expect(await b.get(PRIVATE_STATE_ID)).toEqual(verified);
-    b.setContractAddress(board.work!);
-    expect(await b.get(PRIVATE_STATE_ID)).toEqual(work);
+    expect(await b.forContract(board.verified).get(PRIVATE_STATE_ID)).toEqual(verified);
+    expect(await b.forContract(board.work!).get(PRIVATE_STATE_ID)).toEqual(work);
     expect((await backupConflicts(b, file)).sort()).toEqual([board.verified, board.work].sort());
   });
 

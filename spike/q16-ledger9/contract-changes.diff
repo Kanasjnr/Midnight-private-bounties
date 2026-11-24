@@ -1,0 +1,116 @@
+--- ecdh.compact	2026-10-27 19:00:59
++++ /tmp/q16src/ecdh.compact	2026-11-08 17:55:57
+@@ -10,7 +10,7 @@
+ 
+   // The public key for secret scalar `sk`.
+   export pure circuit publicKey(sk: Field): JubjubPoint {
+-    return ecMulGenerator(sk);
++    return ecMulGenerator(sk as JubjubScalar);
+   }
+ 
+   // Rejects a public key nobody should encrypt to. Using `pk` in a curve
+@@ -18,7 +18,7 @@
+   // prime-order subgroup; the assert rejects the identity point, which passes
+   // those checks but would make every shared key public.
+   export circuit assertValidPublicKey(pk: JubjubPoint): [] {
+-    const g = ecMulGenerator(1);
++    const g = ecMulGenerator(1 as JubjubScalar);
+     const sum = ecAdd(pk, g);
+     assert(!(jubjubPointX(sum) == jubjubPointX(g) && jubjubPointY(sum) == jubjubPointY(g)),
+            "Invalid public key");
+@@ -28,7 +28,7 @@
+   // to one field element and bound to `context`. Both sides get the same
+   // value: the solver from (e, posterPk), the poster from (b, e·G).
+   export pure circuit sharedKey(sk: Field, pk: JubjubPoint, context: Field): Field {
+-    const s = ecMul(pk, sk);
++    const s = ecMul(pk, sk as JubjubScalar);
+     return transientHash<Vector<4, Field>>(["pb:ecdh" as Field, jubjubPointX(s), jubjubPointY(s), context]);
+   }
+ }
+--- schnorr.compact	2026-10-27 19:00:59
++++ /tmp/q16src/schnorr.compact	2026-11-08 17:55:57
+@@ -100,8 +100,8 @@
+            "Non-canonical challenge reduction");
+     const c: Field = disclose(cTruncated) as Field;
+     // s*G == R + c*pk
+-    const lhs: JubjubPoint = ecMulGenerator(response);
+-    const rhs: JubjubPoint = ecAdd(announcement, ecMul(pk, c));
++    const lhs: JubjubPoint = ecMulGenerator(response as JubjubScalar);
++    const rhs: JubjubPoint = ecAdd(announcement, ecMul(pk, c as JubjubScalar));
+     // Compare coordinates, not the points: `==` on the opaque JubjubPoint
+     // compiles to JS reference equality.
+     assert(jubjubPointX(lhs) == jubjubPointX(rhs) && jubjubPointY(lhs) == jubjubPointY(rhs),
+--- stream_cipher.compact	2026-10-27 17:01:00
++++ /tmp/q16src/stream_cipher.compact	2026-11-08 17:56:11
+@@ -16,12 +16,12 @@
+   }
+ 
+   export pure circuit encrypt4(m: Vector<4, Field>, k: Field, context: Field): Vector<4, Field> {
+-    return [m[0] + keystream(k, context, 0), m[1] + keystream(k, context, 1),
+-            m[2] + keystream(k, context, 2), m[3] + keystream(k, context, 3)];
++    return [m[0] + keystream(k, context, 0 as Field), m[1] + keystream(k, context, 1 as Field),
++            m[2] + keystream(k, context, 2 as Field), m[3] + keystream(k, context, 3 as Field)];
+   }
+ 
+   export pure circuit decrypt4(c: Vector<4, Field>, k: Field, context: Field): Vector<4, Field> {
+-    return [c[0] - keystream(k, context, 0), c[1] - keystream(k, context, 1),
+-            c[2] - keystream(k, context, 2), c[3] - keystream(k, context, 3)];
++    return [c[0] - keystream(k, context, 0 as Field), c[1] - keystream(k, context, 1 as Field),
++            c[2] - keystream(k, context, 2 as Field), c[3] - keystream(k, context, 3 as Field)];
+   }
+ }
+--- bounty_preimage.compact	2026-11-03 17:13:31
++++ /tmp/q16src/bounty_preimage.compact	2026-11-08 17:55:03
+@@ -9,7 +9,7 @@
+ // See ARCHITECTURE.md. Each template contract hosts many bounties; the shared
+ // logic lives in the modules imported below.
+ 
+-pragma language_version 0.23;
++pragma language_version 0.28;
+ import CompactStandardLibrary;
+ import "escrow" prefix Escrow_;
+ import "deadline" prefix Deadline_;
+--- bounty_factor.compact	2026-11-03 17:13:31
++++ /tmp/q16src/bounty_factor.compact	2026-11-08 17:55:03
+@@ -13,7 +13,7 @@
+ // See ARCHITECTURE.md. Each template contract hosts many bounties; the shared
+ // logic lives in the modules imported below.
+ 
+-pragma language_version 0.23;
++pragma language_version 0.28;
+ import CompactStandardLibrary;
+ import "escrow" prefix Escrow_;
+ import "deadline" prefix Deadline_;
+--- bounty_signed_record.compact	2026-11-03 17:13:31
++++ /tmp/q16src/bounty_signed_record.compact	2026-11-08 17:55:03
+@@ -15,7 +15,7 @@
+ // zk-loan attestation, say) can't be passed off as a record. The escrow,
+ // deadline and refund logic is the same as bounty_preimage.compact's.
+ 
+-pragma language_version 0.23;
++pragma language_version 0.28;
+ import CompactStandardLibrary;
+ import "escrow" prefix Escrow_;
+ import "deadline" prefix Deadline_;
+--- bounty_reviewed_work.compact	2026-11-03 17:13:31
++++ /tmp/q16src/bounty_reviewed_work.compact	2026-11-08 17:55:03
+@@ -10,7 +10,7 @@
+ // window end is an argument the caller picks, checked against the window with
+ // `assertWindowEnd`. Built from spike Q13; see ARCHITECTURE.md section 5.
+ 
+-pragma language_version 0.23;
++pragma language_version 0.28;
+ import CompactStandardLibrary;
+ import "escrow" prefix Escrow_;
+ import "deadline" prefix Deadline_;
+--- test_token.compact	2026-10-27 17:01:00
++++ /tmp/q16src/test_token.compact	2026-11-08 17:55:03
+@@ -2,7 +2,7 @@
+ // Anyone can mint it: it carries no value. The bounty contracts only check a
+ // coin's color, so no cross-contract call is needed.
+ 
+-pragma language_version 0.23;
++pragma language_version 0.28;
+ import CompactStandardLibrary;
+ 
+ export circuit mint(amount: Uint<64>, nonce: Bytes<32>, recipient: ZswapCoinPublicKey): [] {

@@ -10,7 +10,7 @@
 // window end is an argument the caller picks, checked against the window with
 // `assertWindowEnd`. Built from spike Q13; see ARCHITECTURE.md section 5.
 
-pragma language_version 0.23;
+pragma language_version 0.28;
 import CompactStandardLibrary;
 import "escrow" prefix Escrow_;
 import "deadline" prefix Deadline_;

@@ -2,15 +2,17 @@
 //
 // This file is a MODULE: `import "ecdh" prefix Ecdh_;`.
 //
-// Scalars must be below the Jubjub order (about 2^252); a 248-bit witness is
-// always in range. JubjubPoint is opaque, so read it with jubjubPointX/Y.
+// Curve operations take a JubjubScalar (toolchain 0.36.0); casting a Field to
+// one reduces it modulo the Jubjub order (about 2^252). Our scalars are already
+// below it: a 248-bit witness, or a key reduced by keys.ts. JubjubPoint is
+// opaque, so read it with jubjubPointX/Y.
 
 module ecdh {
   import CompactStandardLibrary;
 
   // The public key for secret scalar `sk`.
   export pure circuit publicKey(sk: Field): JubjubPoint {
-    return ecMulGenerator(sk);
+    return ecMulGenerator(sk as JubjubScalar);
   }
 
   // Rejects a public key nobody should encrypt to. Using `pk` in a curve
@@ -18,7 +20,7 @@ module ecdh {
   // prime-order subgroup; the assert rejects the identity point, which passes
   // those checks but would make every shared key public.
   export circuit assertValidPublicKey(pk: JubjubPoint): [] {
-    const g = ecMulGenerator(1);
+    const g = ecMulGenerator(1 as JubjubScalar);
     const sum = ecAdd(pk, g);
     assert(!(jubjubPointX(sum) == jubjubPointX(g) && jubjubPointY(sum) == jubjubPointY(g)),
            "Invalid public key");
@@ -28,7 +30,7 @@ module ecdh {
   // to one field element and bound to `context`. Both sides get the same
   // value: the solver from (e, posterPk), the poster from (b, e·G).
   export pure circuit sharedKey(sk: Field, pk: JubjubPoint, context: Field): Field {
-    const s = ecMul(pk, sk);
+    const s = ecMul(pk, sk as JubjubScalar);
     return transientHash<Vector<4, Field>>(["pb:ecdh" as Field, jubjubPointX(s), jubjubPointY(s), context]);
   }
 }

@@ -9,7 +9,7 @@ wallet, with the poster in one wallet account and the solver in another.
 | Poster | deploy the test token → deploy a bounty contract → mint tokens → post a bounty (the wallet funds the reward) → decrypt the answer, or refund after the deadline |
 | Solver | join by address → submit the answer → receive the reward. No reward tokens needed, only DUST for fees |
 
-Scaffolded by `yarn new:ui private-bounties --contract bounty_preimage
+Scaffolded by `npm run new:ui -- private-bounties --contract bounty_preimage
 --private-state persistent` from `templates/ui/`. See `AGENTS.md` next to this
 file for which files are template-owned and which are yours, and for the
 verification checklist.
@@ -70,17 +70,14 @@ verification checklist.
 ## Run
 
 ```bash
-yarn workspace @midnight-ntwrk/example-private-bounties run compile   # contracts first
-cd examples/private-bounties && yarn proof:up                           # local proof server
-yarn workspace @midnight-ntwrk/example-private-bounties-ui dev           # http://localhost:5173
+npm run compile -w @midnight-ntwrk/example-private-bounties   # contracts first
+cd examples/private-bounties && npm run proof:up               # proof server 9.0.0
+npm run dev -w @midnight-ntwrk/example-private-bounties-ui    # http://localhost:5173
 ```
 
-On Preview or Preprod, the wallet supplies the indexer and node endpoints,
-so only the proof server runs locally. For a local devnet instead, run
-`yarn env:up && yarn wait:dust` in `examples/private-bounties`, and give each
-browser wallet DUST with `yarn fund:wallet <mn_dust_…> [mn_addr_…]`, run from
-anywhere in the repo. The page prints the exact command when the connected
-wallet has no DUST.
+On Preview or Preprod (both Ledger 9), the wallet supplies the indexer and node
+endpoints, so only the proof server runs locally. The examples' local devnet
+isn't on Ledger 9 yet, so test on Preview.
 
 ## Scripts
 
@@ -98,10 +95,10 @@ Partly run: the ticked items passed on Preview with 1AM on 2026-10-28 (see
 verified is in `templates/ui/VERIFIED.md`, generated from this UI's
 `verification.json`. When you run these, tick them off. Once all pass, set
 `walletDeploy` and `walletCalls` to `verified` in `verification.json` (with the
-date and what ran), run `yarn new:ui private-bounties --sync`, and delete this section.
+date and what ran), run `npm run new:ui -- private-bounties --sync`, and delete this section.
 
-Setup: `yarn proof:up` in `examples/private-bounties`, `yarn workspace
-@midnight-ntwrk/example-private-bounties-ui dev`, and the network picker and
+Setup: `npm run proof:up` in `examples/private-bounties`, `npm run dev -w
+@midnight-ntwrk/example-private-bounties-ui`, and the network picker and
 both wallet accounts on Preview. The proving settings show **Local proof
 server** on a first visit. Account P posts, account S solves; both need DUST,
 and S needs nothing else.

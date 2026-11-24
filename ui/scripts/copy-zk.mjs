@@ -6,14 +6,17 @@
 // Why: in Node the harness reads keys from disk (NodeZkConfigProvider). A browser
 // can't, so the UI uses FetchZkConfigProvider, which GETs
 //   <base>/keys/<circuit>.prover, <base>/keys/<circuit>.verifier, <base>/zkir/<circuit>.bzkir
+// and checks each one against <base>/compiler/contract-manifest.json, the
+// compiler's integrity manifest (Midnight.js 5 refuses unverified artifacts by
+// default), so compiler/ is copied too.
 // We serve them from /managed/<contract>/ (see src/midnight/providers.ts).
 //
-// `yarn dev` and `yarn build` run it first (Yarn 4 does not run pre* scripts).
-// The source is the gitignored output of `yarn compile` in examples/private-bounties,
+// `npm run dev` and `npm run build` run it first.
+// The source is the gitignored output of `npm run compile` in examples/private-bounties,
 // and the destination (public/managed/) is gitignored too.
 //
 // It also refuses to run on a Node older than the repo root's engines.node:
-// Yarn 4 doesn't enforce `engines`, and a shell defaulting to Node 20 crashed
+// npm doesn't enforce `engines`, and a shell defaulting to Node 20 crashed
 // the dev server in hello-world/ui with an unrelated-looking error. This is
 // the first thing `dev` and `build` run, so it fails early and clearly.
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
@@ -37,7 +40,7 @@ for (const dir of ["keys", "zkir"]) {
   if (!existsSync(path.join(primary, dir))) {
     console.error(
       `[copy:zk] ${path.join(primary, dir)} not found.\n` +
-        "Compile the contract first:  yarn workspace @midnight-ntwrk/example-private-bounties run compile",
+        "Compile the contract first:  npm run compile -w @midnight-ntwrk/example-private-bounties",
     );
     process.exit(1);
   }
@@ -53,10 +56,10 @@ const contracts = readdirSync(managed).filter(
 const destRoot = path.resolve(here, "../public/managed");
 rmSync(destRoot, { recursive: true, force: true });
 for (const c of contracts) {
-  for (const dir of ["keys", "zkir"]) {
+  for (const dir of ["keys", "zkir", "compiler"]) {
     cpSync(path.join(managed, c, dir), path.join(destRoot, c, dir), { recursive: true });
   }
 }
 console.log(
-  `[copy:zk] copied keys/ and zkir/ of ${contracts.join(", ")} to ${path.relative(process.cwd(), destRoot)}`,
+  `[copy:zk] copied keys/, zkir/ and compiler/ of ${contracts.join(", ")} to ${path.relative(process.cwd(), destRoot)}`,
 );

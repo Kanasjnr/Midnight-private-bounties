@@ -3,7 +3,7 @@
 // signature made here is exactly what bounty_signed_record verifies.
 // Ported from midnight-examples' zk-loan (attestation-api/signing.ts).
 
-import { ecMulGenerator } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
+import { ecMulGenerator } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime';
 import { pureCircuits } from './managed/bounty_signed_record/contract/index.js';
 import { type SchnorrSignature } from './witnesses.js';
 

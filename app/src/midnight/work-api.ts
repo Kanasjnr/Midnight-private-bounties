@@ -9,14 +9,14 @@ import {
   findDeployedContract,
   type FoundContract,
 } from "@midnight-ntwrk/midnight-js-contracts";
-import { CompiledContract } from "@midnight-ntwrk/midnight-js-protocol/compact-js";
+import { CompiledContract } from "@midnight-ntwrk/midnight-js-protocol/v9/compact-js";
 import {
   CompactTypeBytes,
   CompactTypeVector,
   encodeContractAddress,
   persistentHash,
   type ContractAddress,
-} from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
+} from "@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime";
 import { toHex } from "@midnight-ntwrk/midnight-js-utils";
 import { map, type Observable } from "rxjs";
 import {
@@ -31,7 +31,7 @@ import {
 import { posterKeyFor } from "../../../contract/keys.js";
 import { NO_ANSWER, randomScalar, witnesses } from "../../../contract/witnesses.js";
 import { PRIVATE_STATE_ID, type PrivateBountiesPrivateState } from "@/midnight/contract";
-import type { ContractProviders } from "@/midnight/providers";
+import { contractStateData, type ContractProviders } from "@/midnight/providers";
 import {
   decodeAnswer,
   encodeAnswer,
@@ -84,8 +84,7 @@ export async function deployWork(
 
 /** Join by address, reusing this browser's private state for it when there is one (as joinPrivateBounties does). */
 export async function joinWork(providers: WorkProviders, address: ContractAddress): Promise<WorkContract> {
-  providers.privateStateProvider.setContractAddress(address);
-  const stored = await providers.privateStateProvider.get(PRIVATE_STATE_ID);
+  const stored = await providers.privateStateProvider.forContract(address).get(PRIVATE_STATE_ID);
   const found = await findDeployedContract(providers, {
     compiledContract: CompiledWorkContract,
     contractAddress: address,
@@ -96,12 +95,11 @@ export async function joinWork(providers: WorkProviders, address: ContractAddres
 }
 
 export async function readWorkState(providers: WorkProviders, address: ContractAddress): Promise<PrivateBountiesPrivateState | null> {
-  providers.privateStateProvider.setContractAddress(address);
-  return providers.privateStateProvider.get(PRIVATE_STATE_ID);
+  return providers.privateStateProvider.forContract(address).get(PRIVATE_STATE_ID);
 }
 
 export function work$(providers: WorkProviders, address: ContractAddress): Observable<Ledger> {
-  return providers.publicDataProvider.contractStateObservable(address, { type: "latest" }).pipe(map((s) => ledger(s.data)));
+  return providers.publicDataProvider.contractStateObservable(address, { type: "latest" }).pipe(map(({ value }) => ledger(contractStateData(value))));
 }
 
 const PSEUDONYM_TYPE = new CompactTypeVector(4, new CompactTypeBytes(32));
@@ -309,13 +307,11 @@ export async function submitWork(contract: WorkContract, providers: WorkProvider
   const answer = encodeAnswer(link);
   const base = await readWorkState(providers, address);
   if (!base) throw new Error("No private state for this contract: rejoin it first.");
-  providers.privateStateProvider.setContractAddress(address);
-  await providers.privateStateProvider.set(PRIVATE_STATE_ID, { ...base, answer });
+  await providers.privateStateProvider.forContract(address).set(PRIVATE_STATE_ID, { ...base, answer });
   try {
     return await contract.callTx.submit(v.id, windowEnd(v.terms.reviewWindow, now));
   } finally {
-    providers.privateStateProvider.setContractAddress(address);
-    await providers.privateStateProvider.set(PRIVATE_STATE_ID, { ...base, answer: NO_ANSWER });
+    await providers.privateStateProvider.forContract(address).set(PRIVATE_STATE_ID, { ...base, answer: NO_ANSWER });
   }
 }
 

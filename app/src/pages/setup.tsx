@@ -16,7 +16,7 @@ import { useProofServer } from "~/hooks/use-proof-server";
 import { networkName } from "~/components/top-bar";
 import { Button, CopyButton, cx, Input, LinkButton, Panel } from "~/components/ui";
 
-const PROOF_COMMAND = "docker run -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.1.0 midnight-proof-server -v";
+const PROOF_COMMAND = "docker run -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:9.0.0 midnight-proof-server -v";
 
 type StepState = "done" | "current" | "todo";
 

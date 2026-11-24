@@ -71,7 +71,9 @@ answer. `nostr-tools` is active: 2.25.5 was published on 2026-11-02.
 
 ## Not covered yet
 
-- **Retention.** How long relays keep the events. `node recheck.mjs` asks for them again and
-  appends to `recheck.json`; to be rerun after a day and a week.
+- **Retention.** `node recheck.mjs` asks each relay for the first message again and appends to
+  [recheck.json](recheck.json). After 19 hours, four of the five still had it; relay.snort.social
+  no longer did. So relays can't be the only copy: the app keeps the encrypted events in the
+  browser too. To be rerun after a week.
 - **The browser.** This ran in Node. The app's own build will show the real bundle cost and
   whether browser WebSockets behave the same.
