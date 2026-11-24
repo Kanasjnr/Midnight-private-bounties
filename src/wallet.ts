@@ -225,8 +225,9 @@ export class MidnightWalletProvider implements Ledger9WalletProvider {
   }
 
   /**
-   * Build an un-started wallet provider from a seed or mnemonic. The wallet
-   * syncs from genesis: seconds on a local devnet, over an hour on preprod.
+   * Build an un-started wallet provider from a seed or mnemonic. A new wallet's
+   * first sync takes seconds on a local devnet and about 6 minutes on preprod,
+   * where it skips the Ledger 8 DUST history.
    */
   static async build(
     logger: Logger,
@@ -246,12 +247,15 @@ export class MidnightWalletProvider implements Ledger9WalletProvider {
         ? base.withMnemonic(secret.value)
         : base.withSeed(secret.value);
 
+    skipLedgerV8DustHistory(builder);
+
     const built = await builder.buildWithoutStarting();
     const { seeds, keystore } = built;
     const wallet = await restoreSavedState(logger, env, builder, dustOptions, built.wallet, seeds.masterSeed);
 
-    // The public address only: CI logs are public, so no part of the seed is printed.
-    logger.info(`Wallet built from ${secret.kind}; address ${String(keystore.getBech32Address())}`);
+    logger.info(
+      `Wallet built from ${secret.kind}; address ${String(keystore.getBech32Address())}`,
+    );
 
     return new MidnightWalletProvider(logger, wallet, seeds, keystore);
   }
@@ -329,16 +333,85 @@ export async function syncWallet(
 // same wallet restores it and syncs only the gap. The local devnet is skipped:
 // it starts from a new genesis each time. MIDNIGHT_WALLET_STATE=off turns this
 // off.
+//
+// Each save is stamped with the indexer's host and its tip (height and block
+// hash), and a restore checks the stamp first. A network reset can keep the
+// genesis hash (Preview's on 6 November 2026 did), so without the check a state
+// from the old chain would be restored onto the new one. And indexers number
+// events differently (Blockfrost's preprod ids run 22 behind the official
+// indexer's), so a state from another indexer would resume from the wrong
+// cursors. If the check fails, the wallet syncs from genesis and the next save
+// replaces the file. A version 1 file (from before stamping) is restored as
+// before and gets its stamp on the next save.
 
 const STATE_DIR = fileURLToPath(new URL('../../../.wallet-state/', import.meta.url));
-const stateFiles = new WeakMap<WalletFacade, string>();
+const stateFiles = new WeakMap<WalletFacade, { file: string; indexer: string }>();
 
-type SavedWalletState = { version: 1; shielded: string; unshielded: string; dust: string };
+type SubWalletStates = { shielded: string; unshielded: string; dust: string };
+/** Where a state was synced: the indexer's host (never its URL, which can carry a token) and a block on its chain. */
+type ChainStamp = { indexer: string; height: number; blockHash: string };
+type SavedWalletState = ({ version: 1 } | { version: 2; chain: ChainStamp }) & SubWalletStates;
+
+/** POST a GraphQL query to the indexer; undefined if it can't be reached. */
+async function indexerQuery<T>(indexerHttpUrl: string, query: string): Promise<T | undefined> {
+  try {
+    const res = await fetch(indexerHttpUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    return res.ok ? ((await res.json()) as { data?: T }).data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A stamp for the indexer's current tip, or undefined if it can't be read. */
+async function readChainStamp(indexerHttpUrl: string): Promise<ChainStamp | undefined> {
+  const data = await indexerQuery<{ block?: { height?: number; hash?: string } | null }>(
+    indexerHttpUrl,
+    '{ block { height hash } }',
+  );
+  const height = data?.block?.height;
+  const blockHash = data?.block?.hash;
+  if (typeof height !== 'number' || height <= 0 || typeof blockHash !== 'string') return undefined;
+  return { indexer: new URL(indexerHttpUrl).host, height, blockHash };
+}
+
+/** Null when `stamp` is from this indexer and its block is still on the chain, else why not. */
+async function checkChainStamp(indexerHttpUrl: string, stamp: ChainStamp): Promise<string | null> {
+  const host = new URL(indexerHttpUrl).host;
+  if (stamp.indexer !== host) return `it was synced against ${stamp.indexer}, not ${host}`;
+  const data = await indexerQuery<{ block?: { hash?: string } | null }>(
+    indexerHttpUrl,
+    `{ block(offset: { height: ${Math.trunc(stamp.height)} }) { hash } }`,
+  );
+  const hash = data?.block?.hash;
+  if (typeof hash !== 'string') return `the indexer has no block ${stamp.height} or can't be reached (was the network reset?)`;
+  if (hash !== stamp.blockHash) return `block ${stamp.height} is ${hash}, not ${stamp.blockHash} (was the network reset?)`;
+  return null;
+}
 
 function stateFileFor(networkId: string, masterSeed: string): string | undefined {
   if (networkId === 'undeployed' || process.env['MIDNIGHT_WALLET_STATE'] === 'off') return undefined;
   const id = createHash('sha256').update(masterSeed).digest('hex').slice(0, 16);
   return join(STATE_DIR, `${networkId}-${id}.json`);
+}
+
+/**
+ * Turn on the Wallet SDK's `skipLedgerV8DustHistory` for the DUST wallet the
+ * builder makes. On a chain that crossed the Ledger 9 fork in place (preprod,
+ * Preview, Mainnet), the fork emptied all DUST state and re-emitted live
+ * DUST as Ledger 9 events, so a fresh wallet can start at the fork instead of
+ * replaying every Ledger 8 DUST event from genesis: the slow part of a first
+ * sync. Only fresh starts read it (a restore resumes from its saved cursor),
+ * and on a chain that never crossed the fork it changes nothing. The cost is
+ * the wallet's Ledger 8 DUST transaction history, which the examples don't use.
+ * testkit's builder keeps its wallet configuration private, so it is set there.
+ */
+function skipLedgerV8DustHistory(builder: FluentWalletBuilder): void {
+  (builder as unknown as { config: { skipLedgerV8DustHistory?: boolean } }).config.skipLedgerV8DustHistory = true;
 }
 
 /** The three sub-wallets restored from a snapshot, configured as testkit's WalletFactory configures new ones. */
@@ -385,22 +458,40 @@ async function restoreSavedState(
   let wallet = fresh;
   if (file && existsSync(file)) {
     try {
-      wallet = await restoreFacade(builder, dustOptions, JSON.parse(readFileSync(file, 'utf8')) as SavedWalletState);
-      logger.info(`Restored wallet state from ${file}.`);
+      const saved = JSON.parse(readFileSync(file, 'utf8')) as SavedWalletState;
+      const mismatch = saved.version === 2 ? await checkChainStamp(env.indexer, saved.chain) : null;
+      if (mismatch) {
+        logger.warn(`Not restoring ${file}: ${mismatch}. Syncing from genesis.`);
+      } else {
+        wallet = await restoreFacade(builder, dustOptions, saved);
+        logger.info(
+          saved.version === 2
+            ? `Restored wallet state from ${file} (chain check passed at block ${saved.chain.height}).`
+            : `Restored wallet state from ${file} (no chain stamp yet; it gets one on the next save).`,
+        );
+      }
     } catch (error) {
       logger.warn(`Could not restore ${file} (${String(error)}); syncing from genesis.`);
     }
   }
-  if (file) stateFiles.set(wallet, file);
+  if (file) stateFiles.set(wallet, { file, indexer: env.indexer });
   return wallet;
 }
 
 /** Save the wallet's state for the next build of the same wallet (no-op on the local devnet). */
 export async function saveWalletState(logger: Logger, wallet: WalletFacade): Promise<void> {
-  const file = stateFiles.get(wallet);
-  if (!file) return;
+  const target = stateFiles.get(wallet);
+  if (!target) return;
+  const { file } = target;
+  const chain = await readChainStamp(target.indexer);
+  if (!chain) {
+    // An unstamped save could never be checked, so keep the previous file.
+    logger.warn(`Could not read the chain tip from the indexer; not saving wallet state to ${file}.`);
+    return;
+  }
   const saved: SavedWalletState = {
-    version: 1,
+    version: 2,
+    chain,
     shielded: await wallet.shielded.serializeState(),
     unshielded: await wallet.unshielded.serializeState(),
     dust: await wallet.dust.serializeState(),
@@ -597,6 +688,56 @@ export interface FundingGateOptions {
   label?: string;
 }
 
+/** How often, and how long to wait, when retrying DUST registration after a protocol-version mismatch. */
+const DUST_REGISTRATION_RETRY_ATTEMPTS = 10;
+const DUST_REGISTRATION_RETRY_DELAY_MS = 2_000;
+
+const PROTOCOL_VERSION_MISMATCH_TAG =
+  '@midnightntwrk/wallet-sdk-abstractions/WalletTransaction/ProtocolVersionMismatchError';
+
+function isProtocolVersionMismatchError(err: unknown): boolean {
+  // The SDK's error carries `_tag` set to exactly this string (checked on
+  // wallet-sdk-abstractions 3.0.0); the `name`/class-name checks add nothing.
+  return (
+    err != null &&
+    typeof err === 'object' &&
+    (err as { _tag?: unknown })._tag === PROTOCOL_VERSION_MISMATCH_TAG
+  );
+}
+
+/**
+ * Wallet SDK 2.0.0 can throw ProtocolVersionMismatchError on a
+ * `registerNightUtxosForDustGeneration` call made while the facade is still
+ * crossing a protocol boundary (midnight-examples#93). `waitForFunding`
+ * waits for the facade to settle before registering, but a crossing can
+ * still land between that read and this call — so retry over a few blocks
+ * as a backstop.
+ */
+async function registerNightUtxosForDustGenerationRetrying<T>(
+  logger: Logger,
+  label: string,
+  register: () => Promise<T>,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= DUST_REGISTRATION_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await register();
+    } catch (err) {
+      lastError = err;
+      if (!isProtocolVersionMismatchError(err) || attempt === DUST_REGISTRATION_RETRY_ATTEMPTS) {
+        throw err;
+      }
+      logger.warn(
+        `${label}: DUST registration hit ProtocolVersionMismatchError (attempt ${attempt}/${DUST_REGISTRATION_RETRY_ATTEMPTS}); retrying in ${DUST_REGISTRATION_RETRY_DELAY_MS}ms`,
+      );
+      await new Promise((resolve) => {
+        setTimeout(resolve, DUST_REGISTRATION_RETRY_DELAY_MS);
+      });
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Hold until the wallet can pay for transactions on a remote network. Returns
  * at once when it already can, so only a new wallet sees the faucet prompt.
@@ -639,21 +780,87 @@ export async function waitForNightThenDust(
     return;
   }
 
-  const state = await Rx.firstValueFrom(wallet.state());
+  // Registration needs the facade settled on one side of a protocol
+  // boundary: the first state emission can land mid-crossing, while the
+  // facade is still bound to the version the laggard wallets are on, and
+  // registration then fails with ProtocolVersionMismatchError
+  // (midnight-examples#93). testkit's syncWallet waits for the same
+  // `protocol._tag === 'Settled'` reading; the retry below stays as a
+  // backstop for a crossing that lands between this read and the call.
+  // Bounded overall (`first`, not `each`): the state keeps emitting while the
+  // wallets cross, so a per-emission timeout would never fire on a stall.
+  let lastProtocol: FacadeState['protocol'] | undefined;
+  const state = await Rx.firstValueFrom(
+    wallet.state().pipe(
+      Rx.tap((s: FacadeState) => {
+        lastProtocol = s.protocol;
+      }),
+      Rx.filter((s: FacadeState) => s.protocol._tag === 'Settled'),
+      Rx.timeout({
+        first: FUND_TIMEOUT_MS,
+        with: () =>
+          Rx.throwError(() => {
+            const p = lastProtocol;
+            const behind = p?._tag === 'Crossing' ? ` (${p.behind.join(', ')} behind)` : '';
+            return new Error(
+              `${label}: wallets still crossing a protocol boundary after ${FUND_TIMEOUT_MS}ms${behind}`,
+            );
+          }),
+      }),
+    ),
+  );
   const night = unshieldedToken().raw;
   const unregistered = state.unshielded.availableCoins.filter(
     (coin) => coin.utxo.type === night && !coin.meta.registeredForDustGeneration,
   );
   if (state.dust.balance(new Date()) === 0n && unregistered.length > 0) {
     logger.info(`${label}: registering ${unregistered.length} NIGHT UTXO(s) for DUST generation...`);
-    const recipe = await wallet.registerNightUtxosForDustGeneration(
-      unregistered,
-      keystore.getPublicKey(),
-      (payload) => keystore.signDataAsync(payload),
+    const recipe = await registerNightUtxosForDustGenerationRetrying(
+      logger,
+      label,
+      () =>
+        wallet.registerNightUtxosForDustGeneration(
+          unregistered,
+          keystore.getPublicKey(),
+          (payload) => keystore.signDataAsync(payload),
+        ),
     );
     const txId = await wallet.submitTransaction(await wallet.finalizeRecipe(recipe));
     logger.info(`${label}: DUST registration submitted (${txId}).`);
   }
   await waitForDust(logger, wallet, 1, FUND_TIMEOUT_MS, envConfig.indexer);
   logger.info(`${label}: funded and ready.`);
+}
+
+export interface StartWalletOptions {
+  /** `local`, `preview`, `preprod`, ...: picks the seed and the funding gate. */
+  network: string;
+  /** The wallet to use (see resolveWallet). Defaults to ALICE. */
+  role?: string;
+  /** Faucet URL printed while a remote wallet waits for funds. */
+  faucet: string;
+  /** How long the first sync may take. */
+  syncTimeoutMs: number;
+}
+
+/**
+ * Build, start and sync the wallet for `role`, and on a remote network hold
+ * until it has NIGHT and DUST (synced is not funded: a wallet with no DUST
+ * fails its first submit). Call it once per wallet a suite needs:
+ *
+ *   const bob = await startWallet(logger, envConfig, { network, role: 'BOB', faucet, syncTimeoutMs });
+ */
+export async function startWallet(
+  logger: Logger,
+  env: EnvironmentConfiguration,
+  { network, role, faucet, syncTimeoutMs }: StartWalletOptions,
+): Promise<MidnightWalletProvider> {
+  const setup = resolveWallet(network, role);
+  const w = await MidnightWalletProvider.build(logger, env, setup.secret);
+  await w.start();
+  await syncWallet(logger, w.wallet, syncTimeoutMs);
+  if (network !== 'local') {
+    await waitForNightThenDust(logger, w.wallet, w.unshieldedKeystore, env, faucet, { label: setup.role });
+  }
+  return w;
 }

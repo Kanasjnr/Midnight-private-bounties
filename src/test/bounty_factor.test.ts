@@ -5,7 +5,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { deployContract, submitCallTx } from '@midnight-ntwrk/midnight-js-contracts';
 import { type ContractAddress } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-runtime';
 import {
@@ -80,7 +79,6 @@ describe(`bounty_factor on ${config.networkId}`, () => {
   }
 
   beforeAll(async () => {
-    setNetworkId(config.networkId);
     const env: EnvironmentConfiguration = {
       walletNetworkId: config.networkId,
       networkId: config.networkId,

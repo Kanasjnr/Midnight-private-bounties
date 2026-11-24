@@ -681,18 +681,18 @@ Every public network runs Ledger 9: Mainnet moved on 2026-11-06, Preview was res
 the same week, and Preprod moved on 2026-11-09 in an in-place upgrade (its contracts and balances
 carried over). **The project targets Ledger 9 only**; spike Q16 showed the contracts need only
 mechanical changes ([Q16](spike/q16-ledger9/RESULTS.md)). The last Ledger 8 build stays reachable
-at the `ledger-8-final` tag. Versions are from the docs' compatibility matrix on 2026-11-14.
+at the `ledger-8-final` tag. Versions follow midnight-examples' `toolchain.json` at `953f864` (2026-11-23).
 
 | Component | Version (Mainnet, Preview, Preprod) |
 |---|---|
-| Compact compiler | 0.36.0, language 0.28 (`compact compile +0.36.0 ...`) |
+| Compact compiler | 0.36.1, language 0.28 (`compact compile +0.36.1 ...`): a patch release that fixes key generation for some circuits using `JubjubScalar` |
 | `@midnight-ntwrk/compact-runtime` | 0.21.0 |
-| Midnight.js | 5.0.0 (Node 22.12 or later) |
-| Wallet SDK | `@midnightntwrk/wallet-sdk` 2.0.0 |
+| Midnight.js | 5.0.1 (Node 22.12 or later); `ledger-v9` 1.0.2 and `onchain-runtime-v4` 4.0.2 underneath |
+| Wallet SDK | `@midnightntwrk/wallet-sdk` 2.0.1 |
 | DApp Connector API | 4.1.0 |
 | Ledger | `@midnightntwrk/ledger-v9` |
-| Node / indexer / proof server | 2.1.101 / 4.4.101 / 9.0.0 |
-| Networks | Preview for testing (Preprod works too, through Blockfrost). The examples' local devnet isn't on Ledger 9 yet, so network tests run on Preview |
+| Node / indexer / proof server | 2.1.101 / 4.4.101 / 9.0.2 |
+| Networks | Preview for testing (Preprod works too, through Blockfrost). The examples' local devnet runs Ledger 9 since their `953f864` (node 2.1.101, indexer 4.4.101); our devnet suites still run on Preview at the gate into `main` |
 | Block time | Seconds since the Unix epoch (`blockTimeLt`/`Gte` take a `Uint<64>`) |
 
 What moving to Ledger 9 changes here, from Q16:
@@ -712,7 +712,8 @@ What moving to Ledger 9 changes here, from Q16:
   `postBounty` on Preview was rejected with `Custom error: 104`, the code the issue produces. It
   depends on the chain's tree position, which is why Q16's posts landed. The fix was validated
   upstream on 2026-11-13 and so far ships only in release candidates (`ledger-v9` 1.0.2-rc.0,
-  Midnight.js 5.0.1-rc.1); we move to the final releases when they're out.
+  Midnight.js 5.0.1-rc.1). **Fixed in the final releases** we now use: `ledger-v9` 1.0.2 (2026-11-16)
+  and Midnight.js 5.0.1 (2026-11-17).
 - **New in Ledger 9 and not used yet:** contract events (the activity feed could read them instead
   of comparing states), ECDSA over secp256k1 and Keccak (a signed-record issuer could use an
   ordinary secp256k1 key), and cross-contract calls (unshielded only so far, so they don't help a
