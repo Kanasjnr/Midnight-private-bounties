@@ -1,10 +1,10 @@
-// Reading boards with no wallet connected. A wallet normally hands the app its
+// Reading boards with no wallet connected. Midnight.js 5 takes no global
+// network id; the public indexer needs only its endpoints. A wallet normally hands the app its
 // indexer, so without one the app uses the network's public indexer, where
 // there is one without an API key: Preview, and the local devnet.
 // Preprod and Mainnet go through Blockfrost, which needs a project ID, so
 // browsing those still needs a wallet.
 import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
-import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import type { PublicDataProvider } from "@midnight-ntwrk/midnight-js-types";
 
 const INDEXERS: Record<string, { http: string; ws: string }> = {
@@ -32,7 +32,6 @@ export function readOnlyIndexer(network: string): PublicDataProvider | null {
   if (!i || typeof window === "undefined") return null;
   let p = cache.get(network);
   if (!p) {
-    setNetworkId(network);
     p = indexerPublicDataProvider(i.http, i.ws, window.WebSocket as unknown as Parameters<typeof indexerPublicDataProvider>[2]);
     cache.set(network, p);
   }
